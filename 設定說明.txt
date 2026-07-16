@@ -1,0 +1,46 @@
+【SA看板網站 → GitHub Pages 手機自動看板】設定說明
+════════════════════════════════════════════════════
+目標：手機打開一個固定網址，永遠自動最新，不用開總裁、不用手動 republish。
+帳號：by860207（董事長已有）
+════════════════════════════════════════════════════
+
+【原理】
+  排程每交易日 15:50 → build_board 生成看板 → publish_board 複製成 index.html
+  → git push 上 GitHub → GitHub Pages 自動更新 → 手機重新整理即最新。
+  網址格式：https://by860207.github.io/<repo名>/
+  隱私：用不好猜的 repo 名（免費 github.io）。內容只是股票訊號圖，低敏感。
+  ⚠️ 免費 Pages 需要 repo 為 public（內容任何知道網址的人可看）。
+     要真正私密（private repo + Pages）需 GitHub Pro（$4/月），之後再說。
+
+════════════════════════════════════════════════════
+【董事長只要做一件事：給我一個 PAT（Personal Access Token）】
+════════════════════════════════════════════════════
+  手機或電腦開 github.com → 右上頭像 → Settings
+  → 最下面 Developer settings
+  → Personal access tokens → Fine-grained tokens → Generate new token
+     - Token name: hontu-board
+     - Expiration: 90 天（到期再換）
+     - Repository access: All repositories（或稍後只綁那個 repo）
+     - Permissions → Repository permissions：
+         Contents = Read and write
+         Pages    = Read and write
+         Administration = Read and write（用來自動建 repo + 開 Pages）
+  → Generate → 複製那串 github_pat_xxx... 貼給總裁
+
+  總裁拿到 PAT 後會自動：
+    ① 用 API 建 repo（不好猜的名字）
+    ② push 看板上去
+    ③ 用 API 開 GitHub Pages
+    ④ 把網址給董事長 + 掛進排程（每日自動）
+    ⑤ 測試手機打得開、資料是最新
+
+  ★ PAT 是密碼等級，總裁只存在本機 git 設定（不外傳、不進任何公開 repo）。
+    董事長隨時可在 GitHub 撤銷重發。
+
+════════════════════════════════════════════════════
+【腳本】
+  publish_board.py（在 二次突破量能策略\SA走勢圖網頁\）
+    python publish_board.py           # 生成+複製+push
+    python publish_board.py --nopush  # 只生成+複製(測試,不push)
+  本 repo：C:\Users\User\Desktop\股票\鴻圖\SA看板網站\
+════════════════════════════════════════════════════
