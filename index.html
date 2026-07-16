@@ -75,7 +75,7 @@ canvas{width:100%;display:block;touch-action:none;cursor:grab}
     <div class="chartHead"><span class="nm" id="cName">—</span><span class="px" id="cPx">—</span></div>
     <div class="zoom" id="zoom"></div>
     <canvas id="cv"></canvas>
-    <div class="hint">拖曳移動 · 雙指捏合縮放 · 或按上方週期</div>
+    <div class="hint">拖曳移動 · 雙指捏合縮放 · 長按看十字線/日期 · 或按上方週期</div>
   </div>
   <div class="panel" id="panel"></div>
 </div>
@@ -156,13 +156,41 @@ function draw(){
     if(evLb[e.type]){ctx.font='bold 9px '+css('--font-sans');ctx.textAlign='center';ctx.fillStyle=css(evCol[e.type]);ctx.fillText(evLb[e.type],px,py-15);}
   });
   ctx.strokeStyle=css('--line');ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(padL,H-volH-gap/2);ctx.lineTo(W-padR,H-volH-gap/2);ctx.stroke();
+  G={K,x,yP,lo,hi,padL,padR,padT,priceH,volH,H,W,n,cw};
+  if(cross.on)drawCross();
 }
-let drag=null,pinch=null;const tp=new Map();
-cv.addEventListener('pointerdown',e=>{if(!cur)return;drag={x:e.clientX,end:view.end};cv.setPointerCapture(e.pointerId);});
-cv.addEventListener('pointermove',e=>{if(!drag||pinch||!cur)return;const N=cur.klines.length,cw=cv.clientWidth/view.cnt,dd=Math.round((e.clientX-drag.x)/cw);view.end=Math.max(view.cnt,Math.min(N,drag.end-dd));markZoom();draw();});
-cv.addEventListener('pointerup',()=>drag=null);cv.addEventListener('pointercancel',()=>drag=null);
+let drag=null,pinch=null,cross={on:false,px:0,py:0},G=null,lpTimer=null,downX=0,downY=0;const tp=new Map();
+function crossAt(e){const r=cv.getBoundingClientRect();cross.px=e.clientX-r.left;cross.py=e.clientY-r.top;}
+function roundRect(x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();}
+// 十字線 + 日期/OHLC 資訊框(手機長按/桌面滑鼠移動觸發,如看盤軟體)
+function drawCross(){
+  if(!G)return;const{K,x,yP,lo,hi,padL,padR,padT,priceH,H,W,n,cw}=G;
+  let idx=Math.round((cross.px-padL-cw/2)/cw);idx=Math.max(0,Math.min(n-1,idx));
+  const k=K[idx],cx=x(idx),py=Math.max(padT,Math.min(cross.py,padT+priceH));
+  ctx.save();
+  ctx.strokeStyle=css('--ink2');ctx.globalAlpha=.85;ctx.lineWidth=1;ctx.setLineDash([4,3]);
+  ctx.beginPath();ctx.moveTo(cx,padT);ctx.lineTo(cx,H);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(padL,py);ctx.lineTo(W-padR,py);ctx.stroke();
+  ctx.setLineDash([]);ctx.globalAlpha=1;
+  const pv=lo+(1-(py-padT)/priceH)*(hi-lo);
+  ctx.fillStyle=css('--ink2');ctx.fillRect(W-padR,py-8,padR,16);
+  ctx.fillStyle=css('--bg');ctx.font='bold 10px '+css('--font-mono');ctx.textAlign='center';ctx.fillText(pv.toFixed(1),W-padR/2,py+3.5);
+  ctx.fillStyle=css('--a2');ctx.beginPath();ctx.arc(cx,yP(k[4]),3.2,0,7);ctx.fill();
+  const prev=idx>0?K[idx-1][4]:k[1],chg=(k[4]/prev-1)*100,upc=chg>=0;
+  const L=[k[0],'開 '+(+k[1]).toFixed(1)+'  高 '+(+k[2]).toFixed(1),'低 '+(+k[3]).toFixed(1)+'  收 '+(+k[4]).toFixed(1),(upc?'+':'')+chg.toFixed(2)+'%  量 '+Math.round(k[5]/1000).toLocaleString()+'張'];
+  ctx.font='11px '+css('--font-mono');let bw=0;L.forEach(t=>bw=Math.max(bw,ctx.measureText(t).width));bw+=16;const bh=L.length*15+7;
+  const bx=cross.px>W/2?padL+4:W-padR-bw-4,by=padT+2;
+  ctx.globalAlpha=.93;ctx.fillStyle=css('--panel2');roundRect(bx,by,bw,bh,7);ctx.fill();ctx.strokeStyle=css('--line');ctx.lineWidth=1;roundRect(bx,by,bw,bh,7);ctx.stroke();ctx.globalAlpha=1;ctx.textAlign='left';
+  L.forEach((t,i)=>{ctx.fillStyle=i===0?css('--ink'):i===3?(upc?css('--up'):css('--down')):css('--ink2');ctx.font=(i===0?'bold ':'')+'11px '+css('--font-mono');ctx.fillText(t,bx+8,by+15+i*15);});
+  ctx.restore();
+}
+cv.addEventListener('pointerdown',e=>{if(!cur)return;downX=e.clientX;downY=e.clientY;drag={x:e.clientX,end:view.end};cv.setPointerCapture(e.pointerId);if(e.pointerType==='mouse'){cross.on=false;}else{clearTimeout(lpTimer);lpTimer=setTimeout(()=>{cross.on=true;drag=null;crossAt(e);draw();},320);}});
+cv.addEventListener('pointermove',e=>{if(!cur)return;if(cross.on){crossAt(e);draw();return;}if(drag&&!pinch){if(Math.abs(e.clientX-downX)>6||Math.abs(e.clientY-downY)>6)clearTimeout(lpTimer);const N=cur.klines.length,cw=cv.clientWidth/view.cnt,dd=Math.round((e.clientX-drag.x)/cw);view.end=Math.max(view.cnt,Math.min(N,drag.end-dd));markZoom();draw();return;}if(e.pointerType==='mouse'){crossAt(e);cross.on=true;draw();}});
+cv.addEventListener('pointerup',()=>{clearTimeout(lpTimer);drag=null;if(cross.on){cross.on=false;draw();}});
+cv.addEventListener('pointercancel',()=>{clearTimeout(lpTimer);drag=null;if(cross.on){cross.on=false;draw();}});
+cv.addEventListener('pointerleave',e=>{if(e.pointerType==='mouse'&&cross.on){cross.on=false;draw();}});
 cv.addEventListener('wheel',e=>{if(!cur)return;e.preventDefault();const N=cur.klines.length;view.cnt=Math.max(20,Math.min(N,Math.round(view.cnt*(e.deltaY>0?1.15:.87))));markZoom();draw();},{passive:false});
-cv.addEventListener('touchstart',e=>{[...e.changedTouches].forEach(t=>tp.set(t.identifier,t.clientX));if(tp.size===2){const v=[...tp.values()];pinch={d:Math.abs(v[0]-v[1]),cnt:view.cnt};drag=null;}},{passive:true});
+cv.addEventListener('touchstart',e=>{[...e.changedTouches].forEach(t=>tp.set(t.identifier,t.clientX));if(tp.size===2){const v=[...tp.values()];pinch={d:Math.abs(v[0]-v[1]),cnt:view.cnt};drag=null;clearTimeout(lpTimer);if(cross.on){cross.on=false;draw();}}},{passive:true});
 cv.addEventListener('touchmove',e=>{[...e.changedTouches].forEach(t=>{if(tp.has(t.identifier))tp.set(t.identifier,t.clientX);});if(pinch&&tp.size>=2&&cur){const v=[...tp.values()],nd=Math.abs(v[0]-v[1]),N=cur.klines.length;view.cnt=Math.max(20,Math.min(N,Math.round(pinch.cnt*pinch.d/Math.max(nd,1))));markZoom();draw();}},{passive:true});
 cv.addEventListener('touchend',e=>{[...e.changedTouches].forEach(t=>tp.delete(t.identifier));if(tp.size<2)pinch=null;},{passive:true});
 // 面板
