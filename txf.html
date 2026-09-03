@@ -187,27 +187,62 @@ const TOUCH=('ontouchstart' in window);
 // 十字標規格(董事長定): 單指原地長按3秒→出現; 再長按3秒→消失(開關式)
 // 縮放/平移手勢不會誤觸發; 十字標開著時: 單指拖=移動十字標, 雙指捏=縮放(自製pinch)
 function setupLongPress(p,div){
-  let timer=null,sx=0,sy=0,pinch0=null;
+  let timer=null,sx=0,sy=0,pinch0=null,tipDrag=null;
   const HOLD=1000;
   const pos=(t)=>{const r=div.getBoundingClientRect();return{x:t.clientX-r.left,y:t.clientY-r.top};};
+  function tipEl(){
+    if(!p._tip||!p._tip.isConnected){
+      p._tip=[...p.chart.getDom().querySelectorAll('div')]
+        .find(x=>x.style&&x.style.zIndex==='9999999')||null;
+    }
+    return p._tip;
+  }
+  function moveCross(x,y){
+    p.chart.dispatchAction({type:'showTip',x:x,y:y});
+    // 收盤價虛線: 換算游標所在K棒 -> 拉在其收盤價
+    const d=CACHE[p.tf];if(!d)return;
+    try{
+      const c=p.chart.convertFromPixel({seriesIndex:0},[x,y]);
+      const idx=Math.max(0,Math.min(d.ohlc.length-1,Math.round(c[0])));
+      const cv=d.ohlc[idx][1];
+      if(cv!==p.closeVal){p.closeVal=cv;
+        p.chart.setOption({series:[{markLine:{silent:true,symbol:'none',animation:false,
+          label:{show:true,position:'insideEndTop',color:'#e6e9f0',fontSize:9,formatter:String(cv)},
+          lineStyle:{type:'dashed',color:'rgba(230,233,240,.7)',width:1},
+          data:[{yAxis:cv}]}}]});}
+    }catch(_){}
+  }
   function setCross(on){
     p.cross=on;
-    p.chart.setOption({dataZoom:[{disabled:on}]});   // 開十字標時關掉echarts原生手勢
-    if(!on)p.chart.dispatchAction({type:'hideTip'});
     if(navigator.vibrate)try{navigator.vibrate(on?[40,60,40]:40);}catch(_){ }
+    if(on){
+      p.chart.setOption({dataZoom:[{disabled:true}]});   // 開十字標: 關echarts原生手勢
+    }else{
+      p.closeVal=null;p._tip=null;tipDrag=null;
+      p.chart.dispatchAction({type:'hideTip'});
+      p.chart.clear();draw(p);                            // 徹底重畫: 十字線+虛線+框框全清(修卡在原地bug)
+    }
   }
   div.addEventListener('touchstart',e=>{
+    const te=tipEl();
+    if(p.cross&&te&&e.touches.length===1&&te.contains(e.target)){
+      const q=pos(e.touches[0]);                          // 按在框框上=拖框, 不動十字標不計長按
+      const L=parseFloat(te.style.left)||0,T=parseFloat(te.style.top)||0;
+      tipDrag={dx:q.x-L,dy:q.y-T};
+      clearTimeout(timer);
+      return;
+    }
     if(e.touches.length===1){
       const t=e.touches[0];sx=t.clientX;sy=t.clientY;pinch0=null;
       clearTimeout(timer);
       timer=setTimeout(()=>{
+        const r=div.getBoundingClientRect();
         setCross(!p.cross);
-        if(p.cross){const r=div.getBoundingClientRect();
-          p.chart.dispatchAction({type:'showTip',x:sx-r.left,y:sy-r.top});}
+        if(p.cross)moveCross(sx-r.left,sy-r.top);
       },HOLD);
-      if(p.cross){const q=pos(t);p.chart.dispatchAction({type:'showTip',x:q.x,y:q.y});}
+      if(p.cross){const q=pos(t);moveCross(q.x,q.y);}
     }else{
-      clearTimeout(timer);                            // 第二指落下=縮放意圖, 不算長按
+      clearTimeout(timer);                                // 第二指=縮放意圖, 不算長按
       if(p.cross&&e.touches.length===2){
         const dx=e.touches[0].clientX-e.touches[1].clientX,
               dy=e.touches[0].clientY-e.touches[1].clientY;
@@ -219,13 +254,20 @@ function setupLongPress(p,div){
     }
   },{passive:true});
   div.addEventListener('touchmove',e=>{
+    if(tipDrag&&e.touches.length===1){
+      e.preventDefault();                                 // 拖框框: 放到哪停到哪
+      const q=pos(e.touches[0]);
+      p.tipPos=[q.x-tipDrag.dx,q.y-tipDrag.dy];
+      const te=tipEl();
+      if(te){te.style.left=p.tipPos[0]+'px';te.style.top=p.tipPos[1]+'px';}
+      return;
+    }
     if(e.touches.length===1){
       const t=e.touches[0];
       if(Math.abs(t.clientX-sx)>12||Math.abs(t.clientY-sy)>12)clearTimeout(timer); // 有移動=不算長按
-      if(p.cross){e.preventDefault();
-        const q=pos(t);p.chart.dispatchAction({type:'showTip',x:q.x,y:q.y});}
+      if(p.cross){e.preventDefault();const q=pos(t);moveCross(q.x,q.y);}
     }else if(p.cross&&pinch0&&e.touches.length===2){
-      e.preventDefault();                             // 十字標開著也能雙指縮放
+      e.preventDefault();                                 // 十字標開著也能雙指縮放
       const dx=e.touches[0].clientX-e.touches[1].clientX,
             dy=e.touches[0].clientY-e.touches[1].clientY;
       const scale=Math.hypot(dx,dy)/pinch0.d0;
@@ -237,7 +279,8 @@ function setupLongPress(p,div){
       draw(p);
     }
   },{passive:false});
-  const end=e=>{clearTimeout(timer);if(!e.touches||e.touches.length<2)pinch0=null;};
+  const end=e=>{clearTimeout(timer);tipDrag=null;
+    if(!e.touches||e.touches.length<2)pinch0=null;};
   div.addEventListener('touchend',end);
   div.addEventListener('touchcancel',end);
 }
@@ -263,7 +306,9 @@ function draw(p){
     animation:false,backgroundColor:'transparent',
     tooltip:{trigger:'axis',triggerOn:TOUCH?'none':'mousemove|click',
       axisPointer:{type:'cross'},backgroundColor:'rgba(28,34,48,.92)',borderColor:'#333',
-      textStyle:{color:C.ink,fontSize:10,lineHeight:14},confine:true,padding:[3,6],
+      textStyle:{color:C.ink,fontSize:9,lineHeight:12},confine:true,padding:[2,5],
+      enterable:true,transitionDuration:0,
+      position:TOUCH?function(){return p.tipPos||[8,20];}:undefined,
       formatter:(ps)=>{let out='<b>'+(ps[0]?ps[0].axisValue:'')+'</b><br>';
         let mas=[];
         for(const q of ps){if(q.seriesType==='candlestick'){const v=q.value;
@@ -291,6 +336,11 @@ function draw(p){
                textStyle:{color:C.ink2,fontSize:10},startValue:startI,endValue:endI}],
     series:[
       {name:p.tf+'分K',type:'candlestick',data:d.ohlc,
+       markLine:(p.cross&&p.closeVal!=null)?{silent:true,symbol:'none',animation:false,
+         label:{show:true,position:'insideEndTop',color:'#e6e9f0',fontSize:9,
+                formatter:String(p.closeVal)},
+         lineStyle:{type:'dashed',color:'rgba(230,233,240,.7)',width:1},
+         data:[{yAxis:p.closeVal}]}:{data:[]},
        itemStyle:{color:C.up,color0:C.dn,borderColor:C.up,borderColor0:C.dn}},
       ...maSeries,
       {name:'量',type:'bar',xAxisIndex:1,yAxisIndex:1,data:d.vol,
@@ -307,7 +357,7 @@ function header(){
   el('px').className='px '+(s.chg_vs_vwap>=0?'up':'dn');
   el('sess').textContent=s.sess;
   const age=LIVE?(Date.now()/1000-new Date(LIVE.t.replace(' ','T')).getTime()/1000):9e9;
-  el('ts').textContent=(LIVE?LIVE.t:'')+(age>300?' ⚠資料延遲':'');
+  el('ts').textContent=(LIVE?LIVE.t:'')+(age>300?' ⚠資料延遲':'')+' · v7';
   el('vw').textContent=s.vwap_now!=null?s.vwap_now.toLocaleString():'--';
   el('dv').textContent=s.chg_vs_vwap==null?'--':((s.chg_vs_vwap>=0?'+':'')+s.chg_vs_vwap+'點');
 }
