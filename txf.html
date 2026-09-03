@@ -129,9 +129,8 @@ function doJump(){
     idx=lo;
     if(idx>0&&Math.abs(d.ts[idx-1]-b)<Math.abs(d.ts[idx]-b))idx--;
     const win=p.tf===1?120:80;                   // 跳過去後顯示的視窗寬
-    p.zoomed=true;
-    p.chart.dispatchAction({type:'dataZoom',
-      startValue:Math.max(0,idx-(win>>1)),endValue:Math.min(d.ts.length-1,idx+(win>>1))});
+    p.win={size:win,right:false,endI:Math.min(d.ts.length-1,idx+(win>>1))};
+    draw(p);
   });
   inp.blur();
 }
@@ -147,10 +146,19 @@ PANELS.forEach((p,i)=>{
     +'<label>量高</label><input type="range" min="6" max="26" value="'+p.volh+'" data-volh>';
   const div=document.createElement('div');div.className='chart';div.id='ch'+i;
   root.appendChild(bar);root.appendChild(div);
-  p.chart=echarts.init(div);p.zoomed=false;
-  p.chart.on('datazoom',()=>p.zoomed=true);
+  p.chart=echarts.init(div);p.win=null;
+  // 記錄目前視窗(根數+是否貼右緣); 刷新時原樣還原, 不會自己跳回全部K
+  p.chart.on('datazoom',()=>{
+    const d=CACHE[p.tf];if(!d)return;
+    const o=p.chart.getOption().dataZoom[0];if(!o)return;
+    const n=d.labels.length;
+    let s,e2;
+    if(o.startValue!=null&&o.endValue!=null){s=o.startValue;e2=o.endValue;}
+    else{s=Math.round((o.start||0)/100*(n-1));e2=Math.round((o.end==null?100:o.end)/100*(n-1));}
+    p.win={size:Math.max(5,e2-s+1),right:e2>=n-2,endI:e2};
+  });
   bar.querySelectorAll('.tfbtn').forEach(b=>b.onclick=()=>{
-    p.tf=+b.dataset.tf;p.zoomed=false;save();
+    p.tf=+b.dataset.tf;p.win=null;save();
     bar.querySelectorAll('.tfbtn').forEach(x=>x.classList.toggle('on',x===b));
     p.chart.clear();draw(p);
   });
@@ -212,7 +220,10 @@ function draw(p){
   const d=getTF(p.tf);if(!d)return;
   const closes=d.ohlc.map(v=>v[1]);
   const n=d.labels.length, show=p.tf===1?240:120;
-  const start=p.zoomed?undefined:Math.max(0,100*(n-show)/n);
+  let startI,endI;
+  if(p.win){endI=p.win.right?n-1:Math.min(p.win.endI,n-1);
+    startI=Math.max(0,endI-p.win.size+1);}
+  else{endI=n-1;startI=Math.max(0,n-show);}
   const maSeries=p.ma.map((m,j)=>({name:m?('MA'+m):('ma'+j+'off'),type:'line',
     data:m?sma(closes,m):[],connectNulls:false,symbol:'none',
     lineStyle:{width:1.4,color:MACOLOR[j]},itemStyle:{color:MACOLOR[j]},
@@ -240,11 +251,11 @@ function draw(p){
     yAxis:[{scale:true,gridIndex:0,splitLine:{lineStyle:{color:'#1e2534'}},
             axisLabel:{color:C.ink2,fontSize:10}},
            {gridIndex:1,splitLine:{show:false},axisLabel:{show:false}}],
-    dataZoom:[{type:'inside',xAxisIndex:[0,1],start:start,end:p.zoomed?undefined:100,
+    dataZoom:[{type:'inside',xAxisIndex:[0,1],startValue:startI,endValue:endI,
                throttle:40,zoomOnMouseWheel:true,moveOnMouseMove:true},
               {type:'slider',xAxisIndex:[0,1],bottom:2,height:12,borderColor:'#2a3245',
                backgroundColor:'#1c2230',fillerColor:'rgba(43,176,237,.15)',
-               textStyle:{color:C.ink2,fontSize:10},start:start,end:p.zoomed?undefined:100}],
+               textStyle:{color:C.ink2,fontSize:10},startValue:startI,endValue:endI}],
     series:[
       {name:p.tf+'分K',type:'candlestick',data:d.ohlc,
        itemStyle:{color:C.up,color0:C.dn,borderColor:C.up,borderColor0:C.dn}},
