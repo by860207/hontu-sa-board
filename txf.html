@@ -188,7 +188,7 @@ const TOUCH=('ontouchstart' in window);
 // 縮放/平移手勢不會誤觸發; 十字標開著時: 單指拖=移動十字標, 雙指捏=縮放(自製pinch)
 function setupLongPress(p,div){
   let timer=null,sx=0,sy=0,pinch0=null;
-  const HOLD=3000;
+  const HOLD=1000;
   const pos=(t)=>{const r=div.getBoundingClientRect();return{x:t.clientX-r.left,y:t.clientY-r.top};};
   function setCross(on){
     p.cross=on;
@@ -262,13 +262,15 @@ function draw(p){
   const opt={
     animation:false,backgroundColor:'transparent',
     tooltip:{trigger:'axis',triggerOn:TOUCH?'none':'mousemove|click',
-      axisPointer:{type:'cross'},backgroundColor:'#1c2230',borderColor:'#333',
-      textStyle:{color:C.ink,fontSize:12},confine:true,
+      axisPointer:{type:'cross'},backgroundColor:'rgba(28,34,48,.92)',borderColor:'#333',
+      textStyle:{color:C.ink,fontSize:10,lineHeight:14},confine:true,padding:[3,6],
       formatter:(ps)=>{let out='<b>'+(ps[0]?ps[0].axisValue:'')+'</b><br>';
+        let mas=[];
         for(const q of ps){if(q.seriesType==='candlestick'){const v=q.value;
-            out+='開 '+v[1]+'  收 '+v[2]+'<br>低 '+v[3]+'  高 '+v[4]+'<br>';}
-          else if(q.seriesName==='量'){out+='量 '+q.value+'<br>';}
-          else if(q.value!=null&&q.seriesName.indexOf('off')<0){out+='<span style="color:'+q.color+'">●</span> '+q.seriesName+' '+q.value+'<br>';}}
+            out+='開'+v[1]+' 收'+v[2]+'<br>低'+v[3]+' 高'+v[4]+'<br>';}
+          else if(q.seriesName==='量'){out+='量'+q.value+'<br>';}
+          else if(q.value!=null&&q.seriesName.indexOf('off')<0){mas.push('<span style="color:'+q.color+'">'+q.seriesName.replace('MA','M')+'</span>'+q.value);}}
+        if(mas.length)out+=mas.join(' ');
         return out;}},
     axisPointer:{link:[{xAxisIndex:'all'}]},
     legend:{top:0,right:8,textStyle:{color:C.ink2,fontSize:11},itemWidth:14,
