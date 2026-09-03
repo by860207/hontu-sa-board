@@ -161,8 +161,10 @@ Object.entries(MKTS).forEach(([m,cfg])=>{
   const el=document.createElement('div');el.className='mi'+(m===MARKET?' on':'');el.dataset.m=m;el.textContent=cfg.label;
   el.onclick=()=>{setMarket(m);mktMenu.style.display='none';};mktMenu.appendChild(el);
 });
-// 台指即時走勢圖(家裡電腦供應;手機需同Wi-Fi或Tailscale)
-{const el=document.createElement('div');el.className='mi';el.textContent='📈 台指走勢圖(家用)';
+// 台指走勢圖: 雲端版(隨時隨地,延遲~1分) + 家用版(同Wi-Fi,即時5秒)
+{const el=document.createElement('div');el.className='mi';el.textContent='📈 台指走勢圖(雲端隨身)';
+ el.onclick=()=>{location.href='txf.html';};mktMenu.appendChild(el);}
+{const el=document.createElement('div');el.className='mi';el.textContent='🏠 台指走勢圖(家用即時)';
  el.onclick=()=>{location.href='http://192.168.0.90:8765/';};mktMenu.appendChild(el);}
 $('#mktBtn').onclick=()=>{mktMenu.style.display=mktMenu.style.display==='none'?'block':'none';};
 // ═ 每日巡邏頁(方案B:排程自動抓+此處呈現;勾選存localStorage按日重置) ═

@@ -1,0 +1,205 @@
+<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8">
+<title>台指走勢圖(雲端)</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+<style>
+  :root{--bg:#131722;--panel:#1c2230;--ink:#e6e9f0;--ink2:#9aa3b5;--up:#ef5350;--dn:#26a69a;--acc:#2bb0ed}
+  *{box-sizing:border-box;margin:0}
+  body{background:var(--bg);color:var(--ink);font:13px/1.4 "Segoe UI","Microsoft JhengHei",sans-serif;padding:6px}
+  .hdr{display:flex;gap:12px;align-items:baseline;padding:2px 8px 6px;flex-wrap:wrap}
+  .hdr .px{font-size:20px;font-weight:700;font-variant-numeric:tabular-nums}
+  .hdr .s{font-size:12px;color:var(--ink2)}
+  .hdr a{color:var(--acc);font-size:12px;text-decoration:none;margin-left:auto}
+  .bar{display:flex;gap:6px;align-items:center;flex-wrap:wrap;background:var(--panel);
+       border-radius:8px;padding:4px 8px;margin-bottom:2px}
+  .tfbtn{background:#252d40;color:var(--ink2);border:1px solid #2a3245;border-radius:6px;
+         padding:4px 12px;font-size:13px;cursor:pointer;font-family:inherit}
+  .tfbtn.on{background:var(--acc);color:#0b1320;font-weight:700;border-color:var(--acc)}
+  .bar label{font-size:12px;color:var(--ink2);margin-left:6px}
+  .bar input[type=number]{width:46px;background:#252d40;color:var(--ink);border:1px solid #2a3245;
+       border-radius:5px;padding:3px 4px;font-size:13px;font-family:inherit}
+  .bar input[type=range]{width:70px;accent-color:var(--acc)}
+  .chart{width:100%}
+  .up{color:var(--up)}.dn{color:var(--dn)}
+</style></head><body>
+<div class="hdr">
+  <span class="px" id="px">--</span><span class="s" id="sess"></span>
+  <span class="s">本節均價線 <span id="vw">--</span>（<span id="dv">--</span>）</span>
+  <span class="s" id="ts">載入中…</span>
+  <a href="index.html">← 訊號看板</a>
+</div>
+<div id="panels"></div>
+<script>
+const RAW='https://raw.githubusercontent.com/by860207/hontu-sa-board/live/';
+const css=getComputedStyle(document.documentElement);
+const C={up:css.getPropertyValue('--up').trim(),dn:css.getPropertyValue('--dn').trim(),
+         ink:css.getPropertyValue('--ink').trim(),ink2:css.getPropertyValue('--ink2').trim()};
+const MACOLOR=['#f0b429','#2bb0ed','#c678dd','#ff8a5c'];
+let PANELS=[{tf:5,ma:[5,10,20,60],volh:12},{tf:15,ma:[5,10,20,60],volh:12}];
+try{const sv=JSON.parse(localStorage.getItem('txfcloud_panels'));
+    if(Array.isArray(sv)&&sv.length===2)PANELS=PANELS.map((p,i)=>Object.assign(p,sv[i]));}catch(e){}
+function save(){try{localStorage.setItem('txfcloud_panels',JSON.stringify(
+  PANELS.map(p=>({tf:p.tf,ma:p.ma,volh:p.volh}))));}catch(e){}}
+
+let HIST=null,LIVE=null,M1=[];   // M1: [[ts,o,h,l,c,v,pv],...]
+const CACHE={};                  // tf -> {labels,ohlc,vol,stats}
+
+// ═ 資料合流 + 週期合成(頁面端) ═
+function mergeBars(){
+  const m=new Map();
+  if(HIST)for(const b of HIST.bars)m.set(b[0],b);
+  if(LIVE)for(const b of LIVE.bars)m.set(b[0],b);
+  M1=[...m.values()].sort((a,b)=>a[0]-b[0]);
+  for(const k in CACHE)delete CACHE[k];
+}
+function sessOf(ts){  // 回傳 [種類,錨字串] 或 null; ts=unix秒(手機在台灣=本地時間)
+  const d=new Date(ts*1000),h=d.getHours(),mi=d.getMinutes(),hm=h*60+mi;
+  if(hm>=525&&hm<825)return['D',d.toDateString()+'D'];
+  if(hm>=900)return['N',d.toDateString()+'N'];
+  if(hm<300){const p=new Date(ts*1000-86400000);return['N',p.toDateString()+'N'];}
+  return null;
+}
+function pad(n){return (n<10?'0':'')+n;}
+function lbl(ts){const d=new Date(ts*1000);
+  return pad(d.getMonth()+1)+'-'+pad(d.getDate())+' '+pad(d.getHours())+':'+pad(d.getMinutes());}
+function getTF(tf){
+  if(CACHE[tf])return CACHE[tf];
+  if(!M1.length)return null;
+  const bk=new Map();
+  for(const b of M1){
+    const t0=Math.floor(b[0]/(tf*60))*(tf*60);
+    let x=bk.get(t0);
+    if(!x){x=[t0,b[1],b[2],b[3],b[4],b[5],b[6]];bk.set(t0,x);}
+    else{x[2]=Math.max(x[2],b[2]);x[3]=Math.min(x[3],b[3]);x[4]=b[4];x[5]+=b[5];x[6]+=b[6];}
+  }
+  const ks=[...bk.values()].sort((a,b)=>a[0]-b[0]);
+  const labels=[],ohlc=[],vol=[],vwaps=[];
+  const cum={};  // sid->[pv,v]
+  let lastSess=null,lastVwap=null,lastBarI=0,otherVwap=null,otherSess=null;
+  const barCnt={};
+  for(const k of ks){
+    const s=sessOf(k[0]);
+    if(!s)continue;
+    labels.push(lbl(k[0]));ohlc.push([k[1],k[4],k[3],k[2]]);vol.push(k[5]);
+    const sid=s[1];
+    if(!cum[sid])cum[sid]=[0,0];
+    cum[sid][0]+=k[6];cum[sid][1]+=k[5];
+    barCnt[sid]=(barCnt[sid]||0)+1;
+    const vw=cum[sid][1]>0?+(cum[sid][0]/cum[sid][1]).toFixed(1):null;
+    vwaps.push({kind:s[0],vw:vw});
+    if(lastSess&&lastSess!==s[0]){otherVwap=lastVwap;otherSess=lastSess;}
+    lastSess=s[0];lastVwap=vw;lastBarI=barCnt[sid];
+  }
+  const vD=vwaps.map(x=>x.kind==='D'?x.vw:null), vN=vwaps.map(x=>x.kind==='N'?x.vw:null);
+  const lastC=ohlc.length?ohlc[ohlc.length-1][1]:null;
+  const st={price:lastC,time:LIVE?LIVE.t:'',sess:lastSess==='D'?'日盤':'夜盤',
+    vwap_now:lastVwap,bar_i:lastBarI,
+    chg_vs_vwap:(lastVwap!=null&&lastC!=null)?+(lastC-lastVwap).toFixed(1):null,
+    vwap_other:otherVwap,other_lbl:otherSess==='D'?'日盤':'夜盤'};
+  CACHE[tf]={labels:labels,ohlc:ohlc,vol:vol,vwapD:vD,vwapN:vN,stats:st};
+  return CACHE[tf];
+}
+
+// ═ UI ═
+const root=document.getElementById('panels');
+PANELS.forEach((p,i)=>{
+  const bar=document.createElement('div');bar.className='bar';
+  bar.innerHTML=[1,5,15].map(t=>'<button class="tfbtn'+(t===p.tf?' on':'')+'" data-tf="'+t+'">'+t+'分</button>').join('')
+    +'<label>均線</label>'+p.ma.map((v,j)=>'<input type="number" min="0" max="500" value="'+v+'" data-ma="'+j+'" title="0=關閉" style="border-bottom:2px solid '+MACOLOR[j]+'">').join('')
+    +'<label>量高</label><input type="range" min="6" max="26" value="'+p.volh+'" data-volh>';
+  const div=document.createElement('div');div.className='chart';div.id='ch'+i;
+  root.appendChild(bar);root.appendChild(div);
+  p.chart=echarts.init(div);p.zoomed=false;
+  p.chart.on('datazoom',()=>p.zoomed=true);
+  bar.querySelectorAll('.tfbtn').forEach(b=>b.onclick=()=>{
+    p.tf=+b.dataset.tf;p.zoomed=false;save();
+    bar.querySelectorAll('.tfbtn').forEach(x=>x.classList.toggle('on',x===b));
+    p.chart.clear();draw(p);
+  });
+  bar.querySelectorAll('input[type=number]').forEach(inp=>inp.onchange=()=>{
+    p.ma[+inp.dataset.ma]=Math.max(0,+inp.value||0);save();draw(p);
+  });
+  bar.querySelector('input[data-volh]').oninput=(e)=>{p.volh=+e.target.value;save();draw(p);};
+});
+function sizeCharts(){
+  const h=Math.max(230,(window.innerHeight-118)/2);
+  PANELS.forEach((p,i)=>{const d=document.getElementById('ch'+i);
+    d.style.height=h+'px';p.chart.resize();});
+}
+sizeCharts();window.addEventListener('resize',sizeCharts);
+
+function sma(a,n){const r=Array(a.length).fill(null);if(!n||n<1)return r;
+  let s=0;for(let i=0;i<a.length;i++){s+=a[i];if(i>=n)s-=a[i-n];
+    if(i>=n-1)r[i]=+(s/n).toFixed(1);}return r;}
+
+function draw(p){
+  const d=getTF(p.tf);if(!d)return;
+  const closes=d.ohlc.map(v=>v[1]);
+  const n=d.labels.length, show=p.tf===1?240:120;
+  const start=p.zoomed?undefined:Math.max(0,100*(n-show)/n);
+  const maSeries=p.ma.map((m,j)=>({name:m?('MA'+m):('ma'+j+'off'),type:'line',
+    data:m?sma(closes,m):[],connectNulls:false,symbol:'none',
+    lineStyle:{width:1.4,color:MACOLOR[j]},itemStyle:{color:MACOLOR[j]},
+    emphasis:{disabled:true}}));
+  const opt={
+    animation:false,backgroundColor:'transparent',
+    tooltip:{trigger:'axis',axisPointer:{type:'cross'},backgroundColor:'#1c2230',borderColor:'#333',
+      textStyle:{color:C.ink,fontSize:12},confine:true,
+      formatter:(ps)=>{let out='<b>'+(ps[0]?ps[0].axisValue:'')+'</b><br>';
+        for(const q of ps){if(q.seriesType==='candlestick'){const v=q.value;
+            out+='開 '+v[1]+'  收 '+v[2]+'<br>低 '+v[3]+'  高 '+v[4]+'<br>';}
+          else if(q.seriesName==='量'){out+='量 '+q.value+'<br>';}
+          else if(q.value!=null&&q.seriesName.indexOf('off')<0){out+='<span style="color:'+q.color+'">●</span> '+q.seriesName+' '+q.value+'<br>';}}
+        return out;}},
+    axisPointer:{link:[{xAxisIndex:'all'}]},
+    legend:{top:0,right:8,textStyle:{color:C.ink2,fontSize:11},itemWidth:14,
+      data:maSeries.filter((s,j)=>p.ma[j]).map(s=>s.name)},
+    grid:[{left:54,right:12,top:22,bottom:(p.volh+13)+'%'},
+          {left:54,right:12,bottom:'7%',height:p.volh+'%'}],
+    xAxis:[{type:'category',data:d.labels,gridIndex:0,axisLine:{lineStyle:{color:'#2a3245'}},
+            axisLabel:{color:C.ink2,fontSize:10},axisTick:{show:false}},
+           {type:'category',data:d.labels,gridIndex:1,axisLabel:{show:false},axisTick:{show:false},
+            axisLine:{lineStyle:{color:'#2a3245'}}}],
+    yAxis:[{scale:true,gridIndex:0,splitLine:{lineStyle:{color:'#1e2534'}},
+            axisLabel:{color:C.ink2,fontSize:10}},
+           {gridIndex:1,splitLine:{show:false},axisLabel:{show:false}}],
+    dataZoom:[{type:'inside',xAxisIndex:[0,1],start:start,end:p.zoomed?undefined:100},
+              {type:'slider',xAxisIndex:[0,1],bottom:2,height:12,borderColor:'#2a3245',
+               backgroundColor:'#1c2230',fillerColor:'rgba(43,176,237,.15)',
+               textStyle:{color:C.ink2,fontSize:10},start:start,end:p.zoomed?undefined:100}],
+    series:[
+      {name:p.tf+'分K',type:'candlestick',data:d.ohlc,
+       itemStyle:{color:C.up,color0:C.dn,borderColor:C.up,borderColor0:C.dn}},
+      ...maSeries,
+      {name:'量',type:'bar',xAxisIndex:1,yAxisIndex:1,data:d.vol,
+       itemStyle:{color:(q)=>{const o=d.ohlc[q.dataIndex];
+         return (o&&o[1]>=o[0])?'rgba(239,83,80,.45)':'rgba(38,166,154,.45)';}}}
+    ]};
+  p.chart.setOption(opt,{replaceMerge:['series','legend']});
+}
+function header(){
+  const d=getTF(PANELS[0].tf)||getTF(PANELS[1].tf);
+  if(!d)return;
+  const s=d.stats,el=(i)=>document.getElementById(i);
+  el('px').textContent=s.price!=null?s.price.toLocaleString():'--';
+  el('px').className='px '+(s.chg_vs_vwap>=0?'up':'dn');
+  el('sess').textContent=s.sess;
+  const age=LIVE?(Date.now()/1000-new Date(LIVE.t.replace(' ','T')).getTime()/1000):9e9;
+  el('ts').textContent=(LIVE?LIVE.t:'')+(age>300?' ⚠資料延遲':'');
+  el('vw').textContent=s.vwap_now!=null?s.vwap_now.toLocaleString():'--';
+  el('dv').textContent=s.chg_vs_vwap==null?'--':((s.chg_vs_vwap>=0?'+':'')+s.chg_vs_vwap+'點');
+}
+async function loadHist(){
+  try{const r=await fetch(RAW+'hist.json?ts='+Math.floor(Date.now()/600000));
+    if(r.ok){HIST=await r.json();mergeBars();PANELS.forEach(draw);header();}}
+  catch(e){}
+}
+async function loadLive(){
+  try{const r=await fetch(RAW+'live.json?ts='+Date.now());
+    if(r.ok){LIVE=await r.json();mergeBars();PANELS.forEach(draw);header();}}
+  catch(e){document.getElementById('ts').textContent='連線失敗,重試中...';}
+}
+loadHist();loadLive();
+setInterval(loadLive,30000);
+setInterval(loadHist,1800000);
+</script></body></html>
