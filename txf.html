@@ -27,7 +27,7 @@
   <span class="s">本節均價線 <span id="vw">--</span>（<span id="dv">--</span>）</span>
   <span class="s" id="ts">載入中…</span>
   <span style="display:flex;gap:4px;align-items:center">
-    <input id="jump" placeholder="09-02 10:30" style="width:110px;background:#252d40;color:var(--ink);border:1px solid #2a3245;border-radius:5px;padding:3px 6px;font-size:13px;font-family:inherit">
+    <input id="jump" placeholder="09021005" inputmode="numeric" style="width:110px;background:#252d40;color:var(--ink);border:1px solid #2a3245;border-radius:5px;padding:3px 6px;font-size:13px;font-family:inherit">
     <button id="jumpBtn" class="tfbtn" style="padding:3px 10px">跳至</button>
   </span>
   <a href="index.html">← 訊號看板</a>
@@ -107,12 +107,16 @@ function getTF(tf){
 // ═ 輸入時間跳K棒: 支援「09-02 10:30」「9/2 1030」「10:30(=今天)」 ═
 function parseJump(s){
   s=s.trim();
-  let m=s.match(/^(\d{1,2})[-\/](\d{1,2})[ ,]+(\d{1,2}):?(\d{2})$/);
   const now=new Date();
+  let m=s.match(/^(\d{2})(\d{2})(\d{2})(\d{2})$/);            // 09021005 = 9/2 10:05
   if(m){const d=new Date(now.getFullYear(),+m[1]-1,+m[2],+m[3],+m[4]);
-    if(d-now>90*86400000)d.setFullYear(d.getFullYear()-1);  // 跨年往回找
+    if(d-now>90*86400000)d.setFullYear(d.getFullYear()-1);    // 跨年往回找
     return d.getTime()/1000;}
-  m=s.match(/^(\d{1,2}):?(\d{2})$/);
+  m=s.match(/^(\d{1,2})[-\/](\d{1,2})[ ,]+(\d{1,2}):?(\d{2})$/);  // 09-02 10:05 也收
+  if(m){const d=new Date(now.getFullYear(),+m[1]-1,+m[2],+m[3],+m[4]);
+    if(d-now>90*86400000)d.setFullYear(d.getFullYear()-1);
+    return d.getTime()/1000;}
+  m=s.match(/^(\d{1,2}):?(\d{2})$/);                          // 1005 或 10:05 = 今天
   if(m)return new Date(now.getFullYear(),now.getMonth(),now.getDate(),+m[1],+m[2]).getTime()/1000;
   return null;
 }
@@ -180,33 +184,60 @@ sizeCharts();window.addEventListener('resize',sizeCharts);
 
 // ═ 十字線: 手機改「長按」才出現(短按/滑動=平移縮放不干擾); 桌機維持滑鼠移動 ═
 const TOUCH=('ontouchstart' in window);
+// 十字標規格(董事長定): 單指原地長按3秒→出現; 再長按3秒→消失(開關式)
+// 縮放/平移手勢不會誤觸發; 十字標開著時: 單指拖=移動十字標, 雙指捏=縮放(自製pinch)
 function setupLongPress(p,div){
-  let timer=null,mode=false,sx=0,sy=0;
+  let timer=null,sx=0,sy=0,pinch0=null;
+  const HOLD=3000;
+  const pos=(t)=>{const r=div.getBoundingClientRect();return{x:t.clientX-r.left,y:t.clientY-r.top};};
+  function setCross(on){
+    p.cross=on;
+    p.chart.setOption({dataZoom:[{disabled:on}]});   // 開十字標時關掉echarts原生手勢
+    if(!on)p.chart.dispatchAction({type:'hideTip'});
+    if(navigator.vibrate)try{navigator.vibrate(on?[40,60,40]:40);}catch(_){ }
+  }
   div.addEventListener('touchstart',e=>{
-    if(e.touches.length!==1)return;
-    const t=e.touches[0];sx=t.clientX;sy=t.clientY;
-    clearTimeout(timer);
-    timer=setTimeout(()=>{mode=true;
-      if(navigator.vibrate)try{navigator.vibrate(20);}catch(_){ }
-      p.chart.setOption({dataZoom:[{disabled:true}]});
-      const r=div.getBoundingClientRect();
-      p.chart.dispatchAction({type:'showTip',x:sx-r.left,y:sy-r.top});
-    },350);
+    if(e.touches.length===1){
+      const t=e.touches[0];sx=t.clientX;sy=t.clientY;pinch0=null;
+      clearTimeout(timer);
+      timer=setTimeout(()=>{
+        setCross(!p.cross);
+        if(p.cross){const r=div.getBoundingClientRect();
+          p.chart.dispatchAction({type:'showTip',x:sx-r.left,y:sy-r.top});}
+      },HOLD);
+      if(p.cross){const q=pos(t);p.chart.dispatchAction({type:'showTip',x:q.x,y:q.y});}
+    }else{
+      clearTimeout(timer);                            // 第二指落下=縮放意圖, 不算長按
+      if(p.cross&&e.touches.length===2){
+        const dx=e.touches[0].clientX-e.touches[1].clientX,
+              dy=e.touches[0].clientY-e.touches[1].clientY;
+        const d=CACHE[p.tf],n=d?d.labels.length:0;
+        const w=p.win||{size:(p.tf===1?240:120),right:true,endI:n-1};
+        pinch0={d0:Math.hypot(dx,dy),size0:w.size,
+                endI0:w.right?n-1:w.endI,right0:w.right};
+      }
+    }
   },{passive:true});
   div.addEventListener('touchmove',e=>{
-    const t=e.touches[0];
-    if(!mode){
-      if(Math.abs(t.clientX-sx)>12||Math.abs(t.clientY-sy)>12)clearTimeout(timer);
-      return;
+    if(e.touches.length===1){
+      const t=e.touches[0];
+      if(Math.abs(t.clientX-sx)>12||Math.abs(t.clientY-sy)>12)clearTimeout(timer); // 有移動=不算長按
+      if(p.cross){e.preventDefault();
+        const q=pos(t);p.chart.dispatchAction({type:'showTip',x:q.x,y:q.y});}
+    }else if(p.cross&&pinch0&&e.touches.length===2){
+      e.preventDefault();                             // 十字標開著也能雙指縮放
+      const dx=e.touches[0].clientX-e.touches[1].clientX,
+            dy=e.touches[0].clientY-e.touches[1].clientY;
+      const scale=Math.hypot(dx,dy)/pinch0.d0;
+      const d=CACHE[p.tf];if(!d)return;
+      const n=d.labels.length;
+      const size=Math.max(10,Math.min(n,Math.round(pinch0.size0/scale)));
+      p.win={size:size,right:pinch0.right0,
+             endI:pinch0.right0?n-1:Math.min(n-1,pinch0.endI0)};
+      draw(p);
     }
-    e.preventDefault();
-    const r=div.getBoundingClientRect();
-    p.chart.dispatchAction({type:'showTip',x:t.clientX-r.left,y:t.clientY-r.top});
   },{passive:false});
-  const end=()=>{clearTimeout(timer);
-    if(mode){mode=false;
-      p.chart.dispatchAction({type:'hideTip'});
-      p.chart.setOption({dataZoom:[{disabled:false}]});}};
+  const end=e=>{clearTimeout(timer);if(!e.touches||e.touches.length<2)pinch0=null;};
   div.addEventListener('touchend',end);
   div.addEventListener('touchcancel',end);
 }
