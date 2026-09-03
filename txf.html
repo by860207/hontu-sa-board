@@ -122,11 +122,49 @@ PANELS.forEach((p,i)=>{
   bar.querySelector('input[data-volh]').oninput=(e)=>{p.volh=+e.target.value;save();draw(p);};
 });
 function sizeCharts(){
-  const h=Math.max(230,(window.innerHeight-118)/2);
+  // 量測表頭+兩條工具列的實際高度(手機會摺行變高), 剩餘空間平分給兩張圖 → K棒+量一定同框
+  const hdr=document.querySelector('.hdr');
+  const bars=[...document.querySelectorAll('.bar')];
+  const used=hdr.offsetHeight+bars.reduce((s,b)=>s+b.offsetHeight+2,0)+16;
+  const h=Math.max(185,(window.innerHeight-used)/2);
   PANELS.forEach((p,i)=>{const d=document.getElementById('ch'+i);
     d.style.height=h+'px';p.chart.resize();});
 }
 sizeCharts();window.addEventListener('resize',sizeCharts);
+
+// ═ 十字線: 手機改「長按」才出現(短按/滑動=平移縮放不干擾); 桌機維持滑鼠移動 ═
+const TOUCH=('ontouchstart' in window);
+function setupLongPress(p,div){
+  let timer=null,mode=false,sx=0,sy=0;
+  div.addEventListener('touchstart',e=>{
+    if(e.touches.length!==1)return;
+    const t=e.touches[0];sx=t.clientX;sy=t.clientY;
+    clearTimeout(timer);
+    timer=setTimeout(()=>{mode=true;
+      if(navigator.vibrate)try{navigator.vibrate(20);}catch(_){ }
+      p.chart.setOption({dataZoom:[{disabled:true}]});
+      const r=div.getBoundingClientRect();
+      p.chart.dispatchAction({type:'showTip',x:sx-r.left,y:sy-r.top});
+    },350);
+  },{passive:true});
+  div.addEventListener('touchmove',e=>{
+    const t=e.touches[0];
+    if(!mode){
+      if(Math.abs(t.clientX-sx)>12||Math.abs(t.clientY-sy)>12)clearTimeout(timer);
+      return;
+    }
+    e.preventDefault();
+    const r=div.getBoundingClientRect();
+    p.chart.dispatchAction({type:'showTip',x:t.clientX-r.left,y:t.clientY-r.top});
+  },{passive:false});
+  const end=()=>{clearTimeout(timer);
+    if(mode){mode=false;
+      p.chart.dispatchAction({type:'hideTip'});
+      p.chart.setOption({dataZoom:[{disabled:false}]});}};
+  div.addEventListener('touchend',end);
+  div.addEventListener('touchcancel',end);
+}
+PANELS.forEach((p,i)=>{if(TOUCH)setupLongPress(p,document.getElementById('ch'+i));});
 
 function sma(a,n){const r=Array(a.length).fill(null);if(!n||n<1)return r;
   let s=0;for(let i=0;i<a.length;i++){s+=a[i];if(i>=n)s-=a[i-n];
@@ -143,7 +181,8 @@ function draw(p){
     emphasis:{disabled:true}}));
   const opt={
     animation:false,backgroundColor:'transparent',
-    tooltip:{trigger:'axis',axisPointer:{type:'cross'},backgroundColor:'#1c2230',borderColor:'#333',
+    tooltip:{trigger:'axis',triggerOn:TOUCH?'none':'mousemove|click',
+      axisPointer:{type:'cross'},backgroundColor:'#1c2230',borderColor:'#333',
       textStyle:{color:C.ink,fontSize:12},confine:true,
       formatter:(ps)=>{let out='<b>'+(ps[0]?ps[0].axisValue:'')+'</b><br>';
         for(const q of ps){if(q.seriesType==='candlestick'){const v=q.value;
