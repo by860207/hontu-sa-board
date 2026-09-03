@@ -198,6 +198,7 @@ function setupLongPress(p,div){
     return p._tip;
   }
   function moveCross(x,y){
+    p.lastCrossXY=[x,y];
     p.chart.dispatchAction({type:'showTip',x:x,y:y});
     // 收盤價虛線: 換算游標所在K棒 -> 拉在其收盤價
     const d=CACHE[p.tf];if(!d)return;
@@ -227,8 +228,8 @@ function setupLongPress(p,div){
     const te=tipEl();
     if(p.cross&&te&&e.touches.length===1&&te.contains(e.target)){
       const q=pos(e.touches[0]);                          // 按在框框上=拖框, 不動十字標不計長按
-      const L=parseFloat(te.style.left)||0,T=parseFloat(te.style.top)||0;
-      tipDrag={dx:q.x-L,dy:q.y-T};
+      const br=te.getBoundingClientRect(),r=div.getBoundingClientRect();
+      tipDrag={dx:q.x-(br.left-r.left),dy:q.y-(br.top-r.top)};  // 用實際渲染位置算偏移(transform定位)
       clearTimeout(timer);
       return;
     }
@@ -258,8 +259,8 @@ function setupLongPress(p,div){
       e.preventDefault();                                 // 拖框框: 放到哪停到哪
       const q=pos(e.touches[0]);
       p.tipPos=[q.x-tipDrag.dx,q.y-tipDrag.dy];
-      const te=tipEl();
-      if(te){te.style.left=p.tipPos[0]+'px';te.style.top=p.tipPos[1]+'px';}
+      // 不直接改style(echarts用transform定位會蓋掉), 改為用它自己的機制原地重擺
+      if(p.lastCrossXY)p.chart.dispatchAction({type:'showTip',x:p.lastCrossXY[0],y:p.lastCrossXY[1]});
       return;
     }
     if(e.touches.length===1){
@@ -357,7 +358,7 @@ function header(){
   el('px').className='px '+(s.chg_vs_vwap>=0?'up':'dn');
   el('sess').textContent=s.sess;
   const age=LIVE?(Date.now()/1000-new Date(LIVE.t.replace(' ','T')).getTime()/1000):9e9;
-  el('ts').textContent=(LIVE?LIVE.t:'')+(age>300?' ⚠資料延遲':'')+' · v7';
+  el('ts').textContent=(LIVE?LIVE.t:'')+(age>300?' ⚠資料延遲':'')+' · v8';
   el('vw').textContent=s.vwap_now!=null?s.vwap_now.toLocaleString():'--';
   el('dv').textContent=s.chg_vs_vwap==null?'--':((s.chg_vs_vwap>=0?'+':'')+s.chg_vs_vwap+'點');
 }
