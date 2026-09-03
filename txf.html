@@ -307,7 +307,7 @@ function draw(p){
     animation:false,backgroundColor:'transparent',
     tooltip:{trigger:'axis',triggerOn:TOUCH?'none':'mousemove|click',
       axisPointer:{type:'cross'},backgroundColor:'rgba(28,34,48,.92)',borderColor:'#333',
-      textStyle:{color:C.ink,fontSize:9,lineHeight:12},confine:true,padding:[2,5],
+      textStyle:{color:C.ink,fontSize:9,lineHeight:12},confine:!TOUCH,padding:[2,5],
       enterable:true,transitionDuration:0,
       position:TOUCH?function(){return p.tipPos||[8,20];}:undefined,
       formatter:(ps)=>{let out='<b>'+(ps[0]?ps[0].axisValue:'')+'</b><br>';
@@ -358,7 +358,7 @@ function header(){
   el('px').className='px '+(s.chg_vs_vwap>=0?'up':'dn');
   el('sess').textContent=s.sess;
   const age=LIVE?(Date.now()/1000-new Date(LIVE.t.replace(' ','T')).getTime()/1000):9e9;
-  el('ts').textContent=(LIVE?LIVE.t:'')+(age>300?' ⚠資料延遲':'')+' · v8';
+  el('ts').textContent=(LIVE?LIVE.t:'')+(age>300?' ⚠資料延遲':'')+' · v9';
   el('vw').textContent=s.vwap_now!=null?s.vwap_now.toLocaleString():'--';
   el('dv').textContent=s.chg_vs_vwap==null?'--':((s.chg_vs_vwap>=0?'+':'')+s.chg_vs_vwap+'點');
 }
