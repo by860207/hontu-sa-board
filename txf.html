@@ -10,14 +10,14 @@
   .hdr .px{font-size:20px;font-weight:700;font-variant-numeric:tabular-nums}
   .hdr .s{font-size:12px;color:var(--ink2)}
   .hdr a{color:var(--acc);font-size:12px;text-decoration:none;margin-left:auto}
-  .bar{display:flex;gap:6px;align-items:center;flex-wrap:wrap;background:var(--panel);
-       border-radius:8px;padding:4px 8px;margin-bottom:2px}
-  .tfbtn{background:#252d40;color:var(--ink2);border:1px solid #2a3245;border-radius:6px;
-         padding:4px 12px;font-size:13px;cursor:pointer;font-family:inherit}
+  .bar{display:flex;gap:5px;align-items:center;flex-wrap:wrap;background:var(--panel);
+       border-radius:6px;padding:1px 6px;margin-bottom:1px}
+  .tfbtn{background:#252d40;color:var(--ink2);border:1px solid #2a3245;border-radius:5px;
+         padding:1px 10px;font-size:12px;cursor:pointer;font-family:inherit}
   .tfbtn.on{background:var(--acc);color:#0b1320;font-weight:700;border-color:var(--acc)}
-  .bar label{font-size:12px;color:var(--ink2);margin-left:6px}
-  .bar input[type=number]{width:46px;background:#252d40;color:var(--ink);border:1px solid #2a3245;
-       border-radius:5px;padding:3px 4px;font-size:13px;font-family:inherit}
+  .bar label{font-size:11px;color:var(--ink2);margin-left:4px}
+  .bar input[type=number]{width:42px;background:#252d40;color:var(--ink);border:1px solid #2a3245;
+       border-radius:4px;padding:1px 3px;font-size:12px;font-family:inherit}
   .bar input[type=range]{width:70px;accent-color:var(--acc)}
   .chart{width:100%}
   .up{color:var(--up)}.dn{color:var(--dn)}
@@ -358,7 +358,7 @@ function header(){
   el('px').className='px '+(s.chg_vs_vwap>=0?'up':'dn');
   el('sess').textContent=s.sess;
   const age=LIVE?(Date.now()/1000-new Date(LIVE.t.replace(' ','T')).getTime()/1000):9e9;
-  el('ts').textContent=(LIVE?LIVE.t:'')+(age>300?' ⚠資料延遲':'')+' · v9';
+  el('ts').textContent=(LIVE?LIVE.t:'')+(age>300?' ⚠資料延遲':'')+' · v10';
   el('vw').textContent=s.vwap_now!=null?s.vwap_now.toLocaleString():'--';
   el('dv').textContent=s.chg_vs_vwap==null?'--':((s.chg_vs_vwap>=0?'+':'')+s.chg_vs_vwap+'點');
 }
