@@ -45,7 +45,7 @@ try{const sv=JSON.parse(localStorage.getItem('txfcloud_panels'));
 function save(){try{localStorage.setItem('txfcloud_panels',JSON.stringify(
   PANELS.map(p=>({tf:p.tf,ma:p.ma,volh:p.volh}))));}catch(e){}}
 
-let HIST=null,LIVE=null,M1=[];   // M1: [[ts,o,h,l,c,v,pv],...]
+let HIST=null,LIVE=null,M1=[],FILLS=null;   // M1: [[ts,o,h,l,c,v,pv],...] FILLS: 實際成交紀錄
 const CACHE={};                  // tf -> {labels,ohlc,vol,stats}
 
 // ═ 資料合流 + 週期合成(頁面端) ═
@@ -337,6 +337,26 @@ function draw(p){
                textStyle:{color:C.ink2,fontSize:10},startValue:startI,endValue:endI}],
     series:[
       {name:p.tf+'分K',type:'candlestick',data:d.ohlc,
+       markPoint:{silent:false,animation:false,z:20,data:(function(){
+         const pts=[];
+         if(FILLS)for(const f2 of FILLS){
+           const b2=Math.floor(f2.t/(p.tf*60))*(p.tf*60);
+           let lo=0,hi=d.ts.length-1,ix=-1;
+           while(lo<=hi){const mid=(lo+hi)>>1;
+             if(d.ts[mid]===b2){ix=mid;break;}
+             if(d.ts[mid]<b2)lo=mid+1;else hi=mid-1;}
+           if(ix<0)continue;
+           const isB=f2.bs==='B';
+           pts.push({coord:[ix,isB?d.ohlc[ix][2]:d.ohlc[ix][3]],
+             symbol:'arrow',symbolSize:9,symbolRotate:isB?0:180,
+             symbolOffset:[0,isB?11:-11],
+             name:(isB?'買 ':'賣 ')+f2.pid+' @'+f2.price+' x'+f2.qty,
+             itemStyle:{color:isB?'#2bb0ed':'#f0b429'},
+             label:{show:true,formatter:isB?'B':'S',position:isB?'bottom':'top',
+                    fontSize:9,fontWeight:700,color:isB?'#2bb0ed':'#f0b429'}});
+         }
+         return pts;})(),
+         tooltip:{trigger:'item',formatter:(q)=>q.name}},
        markLine:(p.cross&&p.closeVal!=null)?{silent:true,symbol:'none',animation:false,
          label:{show:true,position:'insideEndTop',color:'#e6e9f0',fontSize:9,
                 formatter:String(p.closeVal)},
@@ -358,7 +378,7 @@ function header(){
   el('px').className='px '+(s.chg_vs_vwap>=0?'up':'dn');
   el('sess').textContent=s.sess;
   const age=LIVE?(Date.now()/1000-new Date(LIVE.t.replace(' ','T')).getTime()/1000):9e9;
-  el('ts').textContent=(LIVE?LIVE.t:'')+(age>300?' ⚠資料延遲':'')+' · v10';
+  el('ts').textContent=(LIVE?LIVE.t:'')+(age>300?' ⚠資料延遲':'')+' · v11';
   el('vw').textContent=s.vwap_now!=null?s.vwap_now.toLocaleString():'--';
   el('dv').textContent=s.chg_vs_vwap==null?'--':((s.chg_vs_vwap>=0?'+':'')+s.chg_vs_vwap+'點');
 }
@@ -381,7 +401,12 @@ async function loadLive(){
     if(r.ok){LIVE=await r.json();mergeBars();PANELS.forEach(draw);header();}}
   catch(e){document.getElementById('ts').textContent='連線失敗,重試中...';}
 }
-loadHist();loadLive();
+async function loadFills(){
+  try{const r=await fetch(RAW+'fills.json?ts='+Math.floor(Date.now()/300000));
+    if(r.ok){FILLS=await r.json();PANELS.forEach(draw);}}catch(e){}
+}
+loadHist();loadLive();loadFills();
 setInterval(loadLive,30000);
 setInterval(loadHist,1800000);
+setInterval(loadFills,1800000);
 </script></body></html>
