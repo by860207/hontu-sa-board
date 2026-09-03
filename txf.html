@@ -284,6 +284,15 @@ async function loadHist(){
   catch(e){}
 }
 async function loadLive(){
+  // 分鐘檔名: live_HHMM.json 每分鐘新URL → CDN必定給最新; 往前退最多5分鐘, 全miss才用快取版live.json
+  const base=Date.now()-15000;   // 15秒生成緩衝
+  for(let k=0;k<5;k++){
+    const d=new Date(base-k*60000);
+    const nm='live_'+pad(d.getHours())+pad(d.getMinutes())+'.json';
+    try{const r=await fetch(RAW+nm);
+      if(r.ok){LIVE=await r.json();mergeBars();PANELS.forEach(draw);header();return;}}
+    catch(e){}
+  }
   try{const r=await fetch(RAW+'live.json?ts='+Date.now());
     if(r.ok){LIVE=await r.json();mergeBars();PANELS.forEach(draw);header();}}
   catch(e){document.getElementById('ts').textContent='連線失敗,重試中...';}
