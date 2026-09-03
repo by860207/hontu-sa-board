@@ -26,6 +26,10 @@
   <span class="px" id="px">--</span><span class="s" id="sess"></span>
   <span class="s">本節均價線 <span id="vw">--</span>（<span id="dv">--</span>）</span>
   <span class="s" id="ts">載入中…</span>
+  <span style="display:flex;gap:4px;align-items:center">
+    <input id="jump" placeholder="09-02 10:30" style="width:110px;background:#252d40;color:var(--ink);border:1px solid #2a3245;border-radius:5px;padding:3px 6px;font-size:13px;font-family:inherit">
+    <button id="jumpBtn" class="tfbtn" style="padding:3px 10px">跳至</button>
+  </span>
   <a href="index.html">← 訊號看板</a>
 </div>
 <div id="panels"></div>
@@ -73,14 +77,14 @@ function getTF(tf){
     else{x[2]=Math.max(x[2],b[2]);x[3]=Math.min(x[3],b[3]);x[4]=b[4];x[5]+=b[5];x[6]+=b[6];}
   }
   const ks=[...bk.values()].sort((a,b)=>a[0]-b[0]);
-  const labels=[],ohlc=[],vol=[],vwaps=[];
+  const labels=[],ohlc=[],vol=[],vwaps=[],tsArr=[];
   const cum={};  // sid->[pv,v]
   let lastSess=null,lastVwap=null,lastBarI=0,otherVwap=null,otherSess=null;
   const barCnt={};
   for(const k of ks){
     const s=sessOf(k[0]);
     if(!s)continue;
-    labels.push(lbl(k[0]));ohlc.push([k[1],k[4],k[3],k[2]]);vol.push(k[5]);
+    labels.push(lbl(k[0]));ohlc.push([k[1],k[4],k[3],k[2]]);vol.push(k[5]);tsArr.push(k[0]);
     const sid=s[1];
     if(!cum[sid])cum[sid]=[0,0];
     cum[sid][0]+=k[6];cum[sid][1]+=k[5];
@@ -96,9 +100,43 @@ function getTF(tf){
     vwap_now:lastVwap,bar_i:lastBarI,
     chg_vs_vwap:(lastVwap!=null&&lastC!=null)?+(lastC-lastVwap).toFixed(1):null,
     vwap_other:otherVwap,other_lbl:otherSess==='D'?'日盤':'夜盤'};
-  CACHE[tf]={labels:labels,ohlc:ohlc,vol:vol,vwapD:vD,vwapN:vN,stats:st};
+  CACHE[tf]={labels:labels,ohlc:ohlc,vol:vol,vwapD:vD,vwapN:vN,stats:st,ts:tsArr};
   return CACHE[tf];
 }
+
+// ═ 輸入時間跳K棒: 支援「09-02 10:30」「9/2 1030」「10:30(=今天)」 ═
+function parseJump(s){
+  s=s.trim();
+  let m=s.match(/^(\d{1,2})[-\/](\d{1,2})[ ,]+(\d{1,2}):?(\d{2})$/);
+  const now=new Date();
+  if(m){const d=new Date(now.getFullYear(),+m[1]-1,+m[2],+m[3],+m[4]);
+    if(d-now>90*86400000)d.setFullYear(d.getFullYear()-1);  // 跨年往回找
+    return d.getTime()/1000;}
+  m=s.match(/^(\d{1,2}):?(\d{2})$/);
+  if(m)return new Date(now.getFullYear(),now.getMonth(),now.getDate(),+m[1],+m[2]).getTime()/1000;
+  return null;
+}
+function doJump(){
+  const inp=document.getElementById('jump');
+  const t=parseJump(inp.value);
+  if(t==null){inp.style.borderColor='#ef5350';setTimeout(()=>inp.style.borderColor='#2a3245',900);return;}
+  PANELS.forEach(p=>{
+    const d=getTF(p.tf);if(!d||!d.ts.length)return;
+    const b=Math.floor(t/(p.tf*60))*(p.tf*60);
+    let idx=d.ts.length-1;                       // 二分找最接近的K
+    let lo=0,hi=d.ts.length-1;
+    while(lo<hi){const mid=(lo+hi)>>1;if(d.ts[mid]<b)lo=mid+1;else hi=mid;}
+    idx=lo;
+    if(idx>0&&Math.abs(d.ts[idx-1]-b)<Math.abs(d.ts[idx]-b))idx--;
+    const win=p.tf===1?120:80;                   // 跳過去後顯示的視窗寬
+    p.zoomed=true;
+    p.chart.dispatchAction({type:'dataZoom',
+      startValue:Math.max(0,idx-(win>>1)),endValue:Math.min(d.ts.length-1,idx+(win>>1))});
+  });
+  inp.blur();
+}
+document.getElementById('jumpBtn').onclick=doJump;
+document.getElementById('jump').addEventListener('keydown',e=>{if(e.key==='Enter')doJump();});
 
 // ═ UI ═
 const root=document.getElementById('panels');
@@ -202,7 +240,8 @@ function draw(p){
     yAxis:[{scale:true,gridIndex:0,splitLine:{lineStyle:{color:'#1e2534'}},
             axisLabel:{color:C.ink2,fontSize:10}},
            {gridIndex:1,splitLine:{show:false},axisLabel:{show:false}}],
-    dataZoom:[{type:'inside',xAxisIndex:[0,1],start:start,end:p.zoomed?undefined:100},
+    dataZoom:[{type:'inside',xAxisIndex:[0,1],start:start,end:p.zoomed?undefined:100,
+               throttle:40,zoomOnMouseWheel:true,moveOnMouseMove:true},
               {type:'slider',xAxisIndex:[0,1],bottom:2,height:12,borderColor:'#2a3245',
                backgroundColor:'#1c2230',fillerColor:'rgba(43,176,237,.15)',
                textStyle:{color:C.ink2,fontSize:10},start:start,end:p.zoomed?undefined:100}],
