@@ -62,6 +62,10 @@
                 border-radius:6px;padding:5px 10px;font:12px inherit;cursor:pointer}
   .pnl{font-variant-numeric:tabular-nums}
   .float.min .fbody{display:none}
+  .rsz{position:absolute;right:0;bottom:0;width:22px;height:22px;cursor:nwse-resize;
+       touch-action:none;color:#5c6478;font-size:12px;display:flex;align-items:flex-end;
+       justify-content:flex-end;padding:0 3px 1px 0;user-select:none}
+  .float.min .rsz{display:none}
   .pill{position:fixed;right:12px;bottom:14px;z-index:50;background:var(--acc);color:#0b1320;
         border:0;border-radius:99px;padding:9px 16px;font:700 13px inherit;cursor:pointer;
         box-shadow:0 6px 18px rgba(0,0,0,.5);display:none}
@@ -135,6 +139,7 @@
     <button class="send long" id="saveCred" style="background:#33405c">儲存金鑰</button>
     <button class="ghost" id="clearCred" style="margin-top:6px;width:100%">清除金鑰</button>
   </div>
+  <div class="rsz" id="rsz" title="拖曳縮放">◢</div>
 </div>
 <button class="pill" id="pill">下單</button>
 
@@ -667,6 +672,43 @@ $('fhead').addEventListener('pointermove',e=>{
   fl.style.left=x+'px';fl.style.top=y+'px';
 });
 $('fhead').addEventListener('pointerup',()=>fdrag=null);
+// 右下角拖曳=整體等比縮放(0.7x~1.6x), 大小記住
+let fscale=1;
+try{fscale=+localStorage.getItem('okx_panel_scale')||1;}catch(e){}
+function applyScale(){
+  fl.style.transformOrigin='top left';
+  fl.style.transform='scale('+fscale+')';
+}
+if(fscale!==1){
+  // 用transform前先把定位換成left/top, 避免right定位下放大超出畫面
+  const r=fl.getBoundingClientRect();
+  fl.style.right='auto';fl.style.bottom='auto';
+  fl.style.left=Math.max(2,r.left)+'px';fl.style.top=Math.max(2,r.top)+'px';
+  applyScale();
+}
+let rsz0=null;
+$('rsz').addEventListener('pointerdown',e=>{
+  e.preventDefault();
+  const r=fl.getBoundingClientRect();
+  fl.style.right='auto';fl.style.bottom='auto';
+  fl.style.left=r.left+'px';fl.style.top=r.top+'px';
+  rsz0={x:e.clientX,y:e.clientY,s:fscale};
+  $('rsz').setPointerCapture(e.pointerId);
+});
+$('rsz').addEventListener('pointermove',e=>{
+  if(!rsz0)return;
+  const d=((e.clientX-rsz0.x)+(e.clientY-rsz0.y))/2;
+  fscale=Math.max(0.7,Math.min(1.6,rsz0.s+d/230));
+  applyScale();
+});
+$('rsz').addEventListener('pointerup',()=>{
+  rsz0=null;
+  try{localStorage.setItem('okx_panel_scale',String(+fscale.toFixed(2)));}catch(e){}
+  // 縮放後若超出畫面邊緣, 拉回來
+  const r=fl.getBoundingClientRect();
+  if(r.right>window.innerWidth)fl.style.left=Math.max(2,window.innerWidth-r.width-2)+'px';
+  if(r.bottom>window.innerHeight)fl.style.top=Math.max(2,window.innerHeight-r.height-2)+'px';
+});
 
 // ═ OKX簽名請求 (WebCrypto HMAC-SHA256→base64) ═
 async function okxApi(method,path,body){
