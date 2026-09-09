@@ -138,15 +138,19 @@ function header(){
     el('chg').className=TICK24.P>=0?'up':'dn';
     el('hi').textContent=fmt(TICK24.h);el('lo').textContent=fmt(TICK24.l);
   }
-  const age=(Date.now()-lastMsg)/1000;
+  const age=lastMsg?(Date.now()-lastMsg)/1000:9e9;
+  const bAge=bkTick?(Date.now()-bkTick)/1000:9e9;
   const dot=el('dot');
-  dot.className=lastMsg?(age<10?'ok':'bad'):'';
-  el('ts').textContent=lastMsg?(age<10?'即時':'WS斷·REST備援中'):'連線中…';
+  if(age<10){dot.className='ok';el('ts').textContent='即時';}
+  else if(bAge<25){dot.className='bad';el('ts').textContent='REST備援(10秒)';}
+  else if(lastMsg||bkTick){dot.className='bad';el('ts').textContent='⚠斷線';}
+  else el('ts').textContent='連線中…';
 }
 setInterval(header,1000);
 // ═ 看門狗: WS超過15秒沒訊息→重建連線 ═
 setInterval(()=>{if(lastMsg&&Date.now()-lastMsg>15000)connectWS();},15000);
-// ═ REST備援輪詢: WS沒資料時每10秒補最新3根K, 保證K棒一定會走 ═
+// ═ REST備援輪詢: WS沒資料時每10秒補最新3根K+24h統計, 保證畫面一定會走 ═
+let bkTick=0;
 setInterval(async()=>{
   if(lastMsg&&Date.now()-lastMsg<12000)return;
   for(const tf of [...new Set(PANELS.map(p=>p.tf))]){
@@ -155,11 +159,18 @@ setInterval(async()=>{
       if(!r.ok)continue;
       const raw=await r.json();
       for(const b of raw)applyK(tf,{t:b[0],o:b[1],h:b[2],l:b[3],c:b[4],v:b[5]});
+      bkTick=Date.now();
       PANELS.forEach(p=>{if(p.tf===tf)queueDraw(p);});
     }catch(e){}
   }
+  try{
+    const r=await fetch('https://fapi.binance.com/fapi/v1/ticker/24hr?symbol='+SYM.s);
+    if(r.ok){const d=await r.json();
+      TICK24={c:+d.lastPrice,P:+d.priceChangePercent,h:+d.highPrice,l:+d.lowPrice};}
+  }catch(e){}
   const d=CACHE[ckey(PANELS[0].tf)];
   if(d&&d.ohlc.length)tickPx(d.ohlc[d.ohlc.length-1][1]);
+  header();
 },10000);
 // 手機切回前景: WS多半被系統殺掉 → 重抓歷史+重連(補上背景期間的洞)
 document.addEventListener('visibilitychange',()=>{
