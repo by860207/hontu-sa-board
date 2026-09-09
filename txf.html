@@ -378,7 +378,7 @@ function header(){
   el('px').className='px '+(s.chg_vs_vwap>=0?'up':'dn');
   el('sess').textContent=s.sess;
   const age=LIVE?(Date.now()/1000-new Date(LIVE.t.replace(' ','T')).getTime()/1000):9e9;
-  el('ts').textContent=(LIVE?LIVE.t:'')+(age>300?' ⚠資料延遲':'')+' · v11';
+  el('ts').textContent=(LIVE?LIVE.t:'')+(age>300?' ⚠資料延遲':'')+(TUN?' ⚡秒級':' · 雲端60秒')+' · v12';
   el('vw').textContent=s.vwap_now!=null?s.vwap_now.toLocaleString():'--';
   el('dv').textContent=s.chg_vs_vwap==null?'--':((s.chg_vs_vwap>=0?'+':'')+s.chg_vs_vwap+'點');
 }
@@ -387,6 +387,14 @@ async function loadHist(){
     if(r.ok){HIST=await r.json();mergeBars();PANELS.forEach(draw);header();}}
   catch(e){}
 }
+function gotLive(j){
+  // 發現/更新隧道網址(家裡電腦廣播的秒級通道)
+  if(j&&j.tun&&j.tun!==TUN){TUN=j.tun;tunFail=0;
+    if(!tunTimer)tunTimer=setInterval(tunnelTick,2000);
+    tunnelTick();}
+  if(TUN){return;}                    // 秒級模式中: 雲端資料較舊, 只取tun不覆蓋
+  LIVE=j;mergeBars();PANELS.forEach(draw);header();
+}
 async function loadLive(){
   // 分鐘檔名: live_HHMM.json 每分鐘新URL → CDN必定給最新; 往前退最多5分鐘, 全miss才用快取版live.json
   const base=Date.now()-15000;   // 15秒生成緩衝
@@ -394,12 +402,25 @@ async function loadLive(){
     const d=new Date(base-k*60000);
     const nm='live_'+pad(d.getHours())+pad(d.getMinutes())+'.json';
     try{const r=await fetch(RAW+nm);
-      if(r.ok){LIVE=await r.json();mergeBars();PANELS.forEach(draw);header();return;}}
+      if(r.ok){gotLive(await r.json());return;}}
     catch(e){}
   }
   try{const r=await fetch(RAW+'live.json?ts='+Date.now());
-    if(r.ok){LIVE=await r.json();mergeBars();PANELS.forEach(draw);header();}}
-  catch(e){document.getElementById('ts').textContent='連線失敗,重試中...';}
+    if(r.ok){gotLive(await r.json());}}
+  catch(e){if(!TUN)document.getElementById('ts').textContent='連線失敗,重試中...';}
+}
+// ═ 秒級模式: 經Cloudflare隧道每2秒直取家裡的/m1(與live.json同格式) ═
+let TUN=null,tunFail=0,tunTimer=null;
+async function tunnelTick(){
+  if(!TUN)return;
+  try{
+    const r=await fetch(TUN+'/m1',{signal:AbortSignal.timeout(4000)});
+    if(!r.ok)throw 0;
+    const j=await r.json();
+    if(j&&j.bars){LIVE=j;mergeBars();PANELS.forEach(draw);header();tunFail=0;}
+  }catch(e){
+    if(++tunFail>=5){TUN=null;}   // 隧道死了→退回雲端60秒; live.json帶回新網址會自動歸隊
+  }
 }
 async function loadFills(){
   try{const r=await fetch(RAW+'fills.json?ts='+Math.floor(Date.now()/300000));
