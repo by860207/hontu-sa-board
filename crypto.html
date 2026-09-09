@@ -141,9 +141,26 @@ function header(){
   const age=(Date.now()-lastMsg)/1000;
   const dot=el('dot');
   dot.className=lastMsg?(age<10?'ok':'bad'):'';
-  el('ts').textContent=lastMsg?(age<10?'即時':'⚠斷線 '+Math.round(age)+'s'):'連線中…';
+  el('ts').textContent=lastMsg?(age<10?'即時':'WS斷·REST備援中'):'連線中…';
 }
 setInterval(header,1000);
+// ═ 看門狗: WS超過15秒沒訊息→重建連線 ═
+setInterval(()=>{if(lastMsg&&Date.now()-lastMsg>15000)connectWS();},15000);
+// ═ REST備援輪詢: WS沒資料時每10秒補最新3根K, 保證K棒一定會走 ═
+setInterval(async()=>{
+  if(lastMsg&&Date.now()-lastMsg<12000)return;
+  for(const tf of [...new Set(PANELS.map(p=>p.tf))]){
+    try{
+      const r=await fetch(REST+'?symbol='+SYM.s+'&interval='+ivOf(tf)+'&limit=3');
+      if(!r.ok)continue;
+      const raw=await r.json();
+      for(const b of raw)applyK(tf,{t:b[0],o:b[1],h:b[2],l:b[3],c:b[4],v:b[5]});
+      PANELS.forEach(p=>{if(p.tf===tf)queueDraw(p);});
+    }catch(e){}
+  }
+  const d=CACHE[ckey(PANELS[0].tf)];
+  if(d&&d.ohlc.length)tickPx(d.ohlc[d.ohlc.length-1][1]);
+},10000);
 // 手機切回前景: WS多半被系統殺掉 → 重抓歷史+重連(補上背景期間的洞)
 document.addEventListener('visibilitychange',()=>{
   if(!document.hidden){reloadAll();}
