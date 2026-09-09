@@ -269,10 +269,7 @@ function setupLongPress(p,div){
       const idx=Math.max(0,Math.min(d.ohlc.length-1,Math.round(c[0])));
       const cv=d.ohlc[idx][1];
       if(cv!==p.closeVal){p.closeVal=cv;
-        p.chart.setOption({series:[{markLine:{silent:true,symbol:'none',animation:false,
-          label:{show:true,position:'insideEndTop',color:'#e6e9f0',fontSize:9,formatter:fmt(cv)},
-          lineStyle:{type:'dashed',color:'rgba(230,233,240,.7)',width:1},
-          data:[{yAxis:cv}]}}]});}
+        p.chart.setOption({series:[{markLine:mkML(p,d)}]});}
     }catch(_){}
   }
   function setCross(on){
@@ -351,6 +348,20 @@ function sma(a,n){const r=Array(a.length).fill(null);if(!n||n<1)return r;
   let s=0;for(let i=0;i<a.length;i++){s+=a[i];if(i>=n)s-=a[i-n];
     if(i>=n-1)r[i]=+(s/n).toFixed(SYM.dp+1);}return r;}
 
+// 現價虛線(右軸價籤,隨行情跳動) + 十字標收盤虛線, 合成一組markLine
+function mkML(p,d){
+  const data=[];const n=d.ohlc.length;
+  if(n){const o=d.ohlc[n-1],c=o[1],up=c>=o[0];
+    data.push({yAxis:c,lineStyle:{type:'dashed',color:up?C.up:C.dn,width:1},
+      label:{show:true,position:'end',distance:2,color:'#0b1320',
+             backgroundColor:up?C.up:C.dn,padding:[1,3],borderRadius:2,
+             fontSize:9,fontWeight:700,formatter:fmt(c)}});}
+  if(p.cross&&p.closeVal!=null)
+    data.push({yAxis:p.closeVal,lineStyle:{type:'dashed',color:'rgba(230,233,240,.7)',width:1},
+      label:{show:true,position:'insideEndTop',color:'#e6e9f0',fontSize:9,formatter:fmt(p.closeVal)}});
+  return {silent:true,symbol:'none',animation:false,data:data};
+}
+
 function draw(p){
   const d=CACHE[ckey(p.tf)];if(!d)return;
   const closes=d.ohlc.map(v=>v[1]);
@@ -381,15 +392,15 @@ function draw(p){
     axisPointer:{link:[{xAxisIndex:'all'}]},
     legend:{top:0,right:8,textStyle:{color:C.ink2,fontSize:11},itemWidth:14,
       data:maSeries.filter((s,j)=>p.ma[j]).map(s=>s.name)},
-    grid:[{left:64,right:12,top:22,bottom:(p.volh+13)+'%'},
-          {left:64,right:12,bottom:'7%',height:p.volh+'%'}],
+    grid:[{left:10,right:66,top:22,bottom:(p.volh+13)+'%'},
+          {left:10,right:66,bottom:'7%',height:p.volh+'%'}],
     xAxis:[{type:'category',data:d.labels,gridIndex:0,axisLine:{lineStyle:{color:'#2a3245'}},
             axisLabel:{color:C.ink2,fontSize:10},axisTick:{show:false}},
            {type:'category',data:d.labels,gridIndex:1,axisLabel:{show:false},axisTick:{show:false},
             axisLine:{lineStyle:{color:'#2a3245'}}}],
-    yAxis:[{scale:true,gridIndex:0,splitLine:{lineStyle:{color:'#1e2534'}},
+    yAxis:[{scale:true,gridIndex:0,position:'right',splitLine:{lineStyle:{color:'#1e2534'}},
             axisLabel:{color:C.ink2,fontSize:10,formatter:v=>fmt(v)}},
-           {gridIndex:1,splitLine:{show:false},axisLabel:{show:false}}],
+           {gridIndex:1,position:'right',splitLine:{show:false},axisLabel:{show:false}}],
     dataZoom:[{type:'inside',xAxisIndex:[0,1],startValue:startI,endValue:endI,
                throttle:40,zoomOnMouseWheel:true,moveOnMouseMove:true},
               {type:'slider',xAxisIndex:[0,1],bottom:2,height:12,borderColor:'#2a3245',
@@ -397,11 +408,7 @@ function draw(p){
                textStyle:{color:C.ink2,fontSize:10},startValue:startI,endValue:endI}],
     series:[
       {name:(p.tf===60?'1時':p.tf+'分')+'K',type:'candlestick',data:d.ohlc,
-       markLine:(p.cross&&p.closeVal!=null)?{silent:true,symbol:'none',animation:false,
-         label:{show:true,position:'insideEndTop',color:'#e6e9f0',fontSize:9,
-                formatter:fmt(p.closeVal)},
-         lineStyle:{type:'dashed',color:'rgba(230,233,240,.7)',width:1},
-         data:[{yAxis:p.closeVal}]}:{data:[]},
+       markLine:mkML(p,d),
        itemStyle:{color:C.up,color0:C.dn,borderColor:C.up,borderColor0:C.dn}},
       ...maSeries,
       {name:'量',type:'bar',xAxisIndex:1,yAxisIndex:1,data:d.vol,
