@@ -669,7 +669,9 @@ function showSet(on){$('setBody').hidden=!on;$('tradeBody').hidden=on;
   if(on&&CREDS){$('ck').value=CREDS.k;$('cs').value=CREDS.s;$('cp').value=CREDS.p;}}
 $('setBtn').onclick=()=>showSet($('setBody').hidden);
 $('saveCred').onclick=async()=>{
-  const k=$('ck').value.trim(),s=$('cs').value.trim(),p=$('cp').value.trim();
+  // 自動剝掉貼上時夾帶的引號/逗號/空白(從JSON筆記複製常見)
+  const clean=v=>v.trim().replace(/^["',:\s]+|["',:\s]+$/g,'');
+  const k=clean($('ck').value),s=clean($('cs').value),p=clean($('cp').value);
   if(!k||!s||!p){toast('三格都要填','err');return;}
   CREDS={k:k,s:s,p:p};
   try{localStorage.setItem('okx_creds',JSON.stringify(CREDS));}catch(e){}
