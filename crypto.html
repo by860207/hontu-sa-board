@@ -658,7 +658,7 @@ function draw(p){
     ]};
   p.chart.setOption(opt,{replaceMerge:['series','legend']});
   // 左上角均線即時值(券商式): ●M5 79,641.3 ... 用線色, 隨每筆成交更新
-  const box=p.chart.getDom().parentElement;
+  const box=p.chart.getDom();   // 掛在各自的圖上: 上面板=上面板週期的均線值, 下面板=下面板的
   let ml=box.querySelector('.malab');
   if(!ml){ml=document.createElement('div');ml.className='malab';box.appendChild(ml);}
   let h='';
