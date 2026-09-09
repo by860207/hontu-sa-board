@@ -166,6 +166,9 @@ Object.entries(MKTS).forEach(([m,cfg])=>{
  el.onclick=()=>{location.href='txf.html';};mktMenu.appendChild(el);}
 {const el=document.createElement('div');el.className='mi';el.textContent='🏠 台指走勢圖(家用即時)';
  el.onclick=()=>{location.href='http://192.168.0.90:8765/';};mktMenu.appendChild(el);}
+// 虛擬幣秒級看盤: 幣安WebSocket直連, 不經本機, 24h隨時可看
+{const el=document.createElement('div');el.className='mi';el.textContent='₿ 虛擬幣走勢圖(秒級)';
+ el.onclick=()=>{location.href='crypto.html';};mktMenu.appendChild(el);}
 $('#mktBtn').onclick=()=>{mktMenu.style.display=mktMenu.style.display==='none'?'block':'none';};
 // ═ 每日巡邏頁(方案B:排程自動抓+此處呈現;勾選存localStorage按日重置) ═
 let patrolLoaded=false;

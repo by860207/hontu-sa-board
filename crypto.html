@@ -1,0 +1,416 @@
+<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8">
+<title>虛擬幣走勢圖(秒級)</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+<style>
+  :root{--bg:#131722;--panel:#1c2230;--ink:#e6e9f0;--ink2:#9aa3b5;--up:#ef5350;--dn:#26a69a;--acc:#f0b429}
+  *{box-sizing:border-box;margin:0}
+  body{background:var(--bg);color:var(--ink);font:13px/1.4 "Segoe UI","Microsoft JhengHei",sans-serif;padding:6px}
+  .hdr{display:flex;gap:10px;align-items:baseline;padding:2px 8px 6px;flex-wrap:wrap}
+  .hdr .px{font-size:20px;font-weight:700;font-variant-numeric:tabular-nums}
+  .hdr .s{font-size:12px;color:var(--ink2)}
+  .hdr a{color:#2bb0ed;font-size:12px;text-decoration:none;margin-left:auto}
+  .symbtn{background:#252d40;color:var(--ink2);border:1px solid #2a3245;border-radius:5px;
+          padding:2px 10px;font-size:13px;cursor:pointer;font-family:inherit;font-weight:700}
+  .symbtn.on{background:var(--acc);color:#0b1320;border-color:var(--acc)}
+  .bar{display:flex;gap:5px;align-items:center;flex-wrap:wrap;background:var(--panel);
+       border-radius:6px;padding:1px 6px;margin-bottom:1px}
+  .tfbtn{background:#252d40;color:var(--ink2);border:1px solid #2a3245;border-radius:5px;
+         padding:1px 10px;font-size:12px;cursor:pointer;font-family:inherit}
+  .tfbtn.on{background:#2bb0ed;color:#0b1320;font-weight:700;border-color:#2bb0ed}
+  .bar label{font-size:11px;color:var(--ink2);margin-left:4px}
+  .bar input[type=number]{width:42px;background:#252d40;color:var(--ink);border:1px solid #2a3245;
+       border-radius:4px;padding:1px 3px;font-size:12px;font-family:inherit}
+  .bar input[type=range]{width:70px;accent-color:#2bb0ed}
+  .chart{width:100%}
+  .up{color:var(--up)}.dn{color:var(--dn)}
+  #dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#666;vertical-align:0}
+  #dot.ok{background:#26a69a}#dot.bad{background:#ef5350}
+</style></head><body>
+<div class="hdr">
+  <span id="syms"></span>
+  <span class="px" id="px">--</span>
+  <span class="s"><span id="chg">--</span> 24h</span>
+  <span class="s">高 <span id="hi">--</span> 低 <span id="lo">--</span></span>
+  <span class="s"><span id="dot"></span> <span id="ts">連線中…</span></span>
+  <a href="index.html">← 訊號看板</a>
+</div>
+<div id="panels"></div>
+<script>
+// ═ 虛擬幣秒級看盤 v1 (2026-09-09) ═
+// 資料源: 幣安USDT-M永續合約(對應Phase2合約下單)。歷史=REST klines, 即時=WebSocket推送(kline流~250ms一筆)
+// 介面沿用 txf.html v11: 雙面板/長按十字標/雙指縮放/跳至時間
+const SYMS=[{s:'BTCUSDT',n:'BTC',dp:1},{s:'ETHUSDT',n:'ETH',dp:2},{s:'SOLUSDT',n:'SOL',dp:3}];
+const TFS=[{tf:1,iv:'1m'},{tf:5,iv:'5m'},{tf:15,iv:'15m'},{tf:60,iv:'1h'}];
+const REST='https://fapi.binance.com/fapi/v1/klines';
+const css=getComputedStyle(document.documentElement);
+const C={up:css.getPropertyValue('--up').trim(),dn:css.getPropertyValue('--dn').trim(),
+         ink:css.getPropertyValue('--ink').trim(),ink2:css.getPropertyValue('--ink2').trim()};
+const MACOLOR=['#f0b429','#2bb0ed','#c678dd','#ff8a5c'];
+let SYM=SYMS[0];
+let PANELS=[{tf:1,ma:[5,10,20,60],volh:12},{tf:15,ma:[5,10,20,60],volh:12}];
+try{const sv=JSON.parse(localStorage.getItem('crypto_panels'));
+    if(sv&&Array.isArray(sv.p)&&sv.p.length===2){PANELS=PANELS.map((p,i)=>Object.assign(p,sv.p[i]));
+      const s2=SYMS.find(x=>x.s===sv.sym);if(s2)SYM=s2;}}catch(e){}
+function save(){try{localStorage.setItem('crypto_panels',JSON.stringify(
+  {sym:SYM.s,p:PANELS.map(p=>({tf:p.tf,ma:p.ma,volh:p.volh}))}));}catch(e){}}
+
+const CACHE={};                 // "SYM_tf" -> {labels,ohlc,vol,ts}
+const ckey=tf=>SYM.s+'_'+tf;
+const ivOf=tf=>TFS.find(x=>x.tf===tf).iv;
+const fmt=v=>v==null?'--':(+v).toLocaleString(undefined,{minimumFractionDigits:SYM.dp,maximumFractionDigits:SYM.dp});
+function pad(n){return (n<10?'0':'')+n;}
+function lbl(ts){const d=new Date(ts*1000);
+  return pad(d.getMonth()+1)+'-'+pad(d.getDate())+' '+pad(d.getHours())+':'+pad(d.getMinutes());}
+
+// ═ 歷史K: REST一次抓滿(1m最多1500根=25小時, 其餘各1000根) ═
+async function loadTF(tf){
+  const k=ckey(tf);
+  const lim=tf===1?1500:1000;
+  const r=await fetch(REST+'?symbol='+SYM.s+'&interval='+ivOf(tf)+'&limit='+lim);
+  if(!r.ok)throw new Error('klines '+r.status);
+  const raw=await r.json();
+  const d={labels:[],ohlc:[],vol:[],ts:[]};
+  for(const b of raw){const t0=b[0]/1000;
+    d.ts.push(t0);d.labels.push(lbl(t0));
+    d.ohlc.push([+b[1],+b[4],+b[3],+b[2]]);d.vol.push(+(+b[5]).toFixed(1));}
+  CACHE[k]=d;return d;
+}
+// WS kline事件 → 更新/追加最後一根
+function applyK(tf,k){
+  const d=CACHE[ckey(tf)];if(!d)return;
+  const t0=k.t/1000;
+  const bar=[+k.o,+k.c,+k.l,+k.h],v=+(+k.v).toFixed(1);
+  const last=d.ts.length-1;
+  if(last>=0&&d.ts[last]===t0){d.ohlc[last]=bar;d.vol[last]=v;}
+  else if(last<0||t0>d.ts[last]){
+    d.ts.push(t0);d.labels.push(lbl(t0));d.ohlc.push(bar);d.vol.push(v);
+    if(d.ts.length>2200){d.ts.shift();d.labels.shift();d.ohlc.shift();d.vol.shift();}
+  }
+}
+
+// ═ WebSocket: aggTrade(毫秒級成交價)+ticker(24h統計)+各面板kline流; 換幣/換週期重建連線 ═
+let WS=null,wsSeq=0,lastMsg=0;
+function connectWS(){
+  const my=++wsSeq;
+  if(WS){try{WS.close();}catch(e){}WS=null;}
+  const s=SYM.s.toLowerCase();
+  const tfs=[...new Set(PANELS.map(p=>p.tf))];
+  const streams=[s+'@aggTrade',s+'@ticker',...tfs.map(t=>s+'@kline_'+ivOf(t))];
+  const ws=new WebSocket('wss://fstream.binance.com/stream?streams='+streams.join('/'));
+  WS=ws;
+  ws.onmessage=(ev)=>{
+    if(my!==wsSeq)return;
+    lastMsg=Date.now();
+    const m=JSON.parse(ev.data),st=m.stream,d=m.data;
+    if(st.endsWith('@aggTrade')){tickPx(+d.p);}
+    else if(st.endsWith('@ticker')){TICK24={c:+d.c,P:+d.P,h:+d.h,l:+d.l};header();}
+    else if(st.indexOf('@kline_')>=0){
+      const iv=st.split('@kline_')[1];
+      const tf=TFS.find(x=>x.iv===iv);if(!tf)return;
+      applyK(tf.tf,d.k);
+      PANELS.forEach(p=>{if(p.tf===tf.tf)queueDraw(p);});
+    }
+  };
+  ws.onclose=()=>{if(my===wsSeq)setTimeout(()=>{if(my===wsSeq)connectWS();},2000);};
+  ws.onerror=()=>{try{ws.close();}catch(e){}};
+}
+let TICK24=null;
+// 秒級跳動只改DOM數字(輕), K棒重畫節流至每400ms(手機省電)
+let lastPx=null;
+function tickPx(p){
+  const el=document.getElementById('px');
+  el.textContent=fmt(p);
+  if(lastPx!=null)el.className='px '+(p>=lastPx?'up':'dn');
+  lastPx=p;
+}
+const drawQ=new Set();let drawTimer=null;
+function queueDraw(p){
+  drawQ.add(p);
+  if(drawTimer)return;
+  drawTimer=setTimeout(()=>{drawTimer=null;
+    const q=[...drawQ];drawQ.clear();q.forEach(draw);},400);
+}
+function header(){
+  const el=i=>document.getElementById(i);
+  if(TICK24){
+    el('chg').textContent=(TICK24.P>=0?'+':'')+TICK24.P.toFixed(2)+'%';
+    el('chg').className=TICK24.P>=0?'up':'dn';
+    el('hi').textContent=fmt(TICK24.h);el('lo').textContent=fmt(TICK24.l);
+  }
+  const age=(Date.now()-lastMsg)/1000;
+  const dot=el('dot');
+  dot.className=lastMsg?(age<10?'ok':'bad'):'';
+  el('ts').textContent=lastMsg?(age<10?'即時':'⚠斷線 '+Math.round(age)+'s'):'連線中…';
+}
+setInterval(header,1000);
+// 手機切回前景: WS多半被系統殺掉 → 重抓歷史+重連(補上背景期間的洞)
+document.addEventListener('visibilitychange',()=>{
+  if(!document.hidden){reloadAll();}
+});
+async function reloadAll(){
+  connectWS();
+  for(const tf of [...new Set(PANELS.map(p=>p.tf))]){
+    try{await loadTF(tf);}catch(e){}
+  }
+  PANELS.forEach(p=>{p.chart&&draw(p);});
+}
+
+// ═ 輸入時間跳K棒: 「09021005」「9/2 10:05」「10:05(=今天)」 ═
+function parseJump(s){
+  s=s.trim();const now=new Date();
+  let m=s.match(/^(\d{2})(\d{2})(\d{2})(\d{2})$/);
+  if(m){const d=new Date(now.getFullYear(),+m[1]-1,+m[2],+m[3],+m[4]);
+    if(d-now>90*86400000)d.setFullYear(d.getFullYear()-1);return d.getTime()/1000;}
+  m=s.match(/^(\d{1,2})[-\/](\d{1,2})[ ,]+(\d{1,2}):?(\d{2})$/);
+  if(m){const d=new Date(now.getFullYear(),+m[1]-1,+m[2],+m[3],+m[4]);
+    if(d-now>90*86400000)d.setFullYear(d.getFullYear()-1);return d.getTime()/1000;}
+  m=s.match(/^(\d{1,2}):?(\d{2})$/);
+  if(m)return new Date(now.getFullYear(),now.getMonth(),now.getDate(),+m[1],+m[2]).getTime()/1000;
+  return null;
+}
+
+// ═ UI ═
+const symBox=document.getElementById('syms');
+SYMS.forEach(sy=>{
+  const b=document.createElement('button');b.className='symbtn'+(sy===SYM?' on':'');
+  b.textContent=sy.n;
+  b.onclick=async()=>{
+    if(sy===SYM)return;
+    SYM=sy;lastPx=null;TICK24=null;save();
+    symBox.querySelectorAll('.symbtn').forEach(x=>x.classList.toggle('on',x===b));
+    document.getElementById('px').textContent='--';
+    PANELS.forEach(p=>{p.win=null;p.chart&&p.chart.clear();});
+    await reloadAll();
+  };
+  symBox.appendChild(b);
+});
+const root=document.getElementById('panels');
+PANELS.forEach((p,i)=>{
+  const bar=document.createElement('div');bar.className='bar';
+  bar.innerHTML=TFS.map(t=>'<button class="tfbtn'+(t.tf===p.tf?' on':'')+'" data-tf="'+t.tf+'">'+(t.tf===60?'1時':t.tf+'分')+'</button>').join('')
+    +'<label>均線</label>'+p.ma.map((v,j)=>'<input type="number" min="0" max="500" value="'+v+'" data-ma="'+j+'" title="0=關閉" style="border-bottom:2px solid '+MACOLOR[j]+'">').join('')
+    +'<label>量高</label><input type="range" min="6" max="26" value="'+p.volh+'" data-volh>'
+    +(i===0?'<span style="display:flex;gap:4px;align-items:center;margin-left:auto">'
+      +'<input id="jump" placeholder="09091005" inputmode="numeric" style="width:90px;background:#252d40;color:var(--ink);border:1px solid #2a3245;border-radius:5px;padding:2px 6px;font-size:12px;font-family:inherit">'
+      +'<button id="jumpBtn" class="tfbtn" style="padding:2px 10px">跳至</button></span>':'');
+  const div=document.createElement('div');div.className='chart';div.id='ch'+i;
+  root.appendChild(bar);root.appendChild(div);
+  p.chart=echarts.init(div);p.win=null;
+  p.chart.on('datazoom',()=>{
+    const d=CACHE[ckey(p.tf)];if(!d)return;
+    const o=p.chart.getOption().dataZoom[0];if(!o)return;
+    const n=d.labels.length;
+    let s,e2;
+    if(o.startValue!=null&&o.endValue!=null){s=o.startValue;e2=o.endValue;}
+    else{s=Math.round((o.start||0)/100*(n-1));e2=Math.round((o.end==null?100:o.end)/100*(n-1));}
+    p.win={size:Math.max(5,e2-s+1),right:e2>=n-2,endI:e2};
+  });
+  bar.querySelectorAll('.tfbtn').forEach(b=>b.onclick=async()=>{
+    p.tf=+b.dataset.tf;p.win=null;save();
+    bar.querySelectorAll('.tfbtn').forEach(x=>x.classList.toggle('on',x===b));
+    p.chart.clear();
+    if(!CACHE[ckey(p.tf)]){try{await loadTF(p.tf);}catch(e){}}
+    connectWS();draw(p);
+  });
+  bar.querySelectorAll('input[type=number]').forEach(inp=>inp.onchange=()=>{
+    p.ma[+inp.dataset.ma]=Math.max(0,+inp.value||0);save();draw(p);
+  });
+  bar.querySelector('input[data-volh]').oninput=(e)=>{p.volh=+e.target.value;save();draw(p);};
+});
+function doJump(){
+  const inp=document.getElementById('jump');
+  const t=parseJump(inp.value);
+  if(t==null){inp.style.borderColor='#ef5350';setTimeout(()=>inp.style.borderColor='#2a3245',900);return;}
+  PANELS.forEach(p=>{
+    const d=CACHE[ckey(p.tf)];if(!d||!d.ts.length)return;
+    const b=Math.floor(t/(p.tf*60))*(p.tf*60);
+    let lo=0,hi=d.ts.length-1;
+    while(lo<hi){const mid=(lo+hi)>>1;if(d.ts[mid]<b)lo=mid+1;else hi=mid;}
+    let idx=lo;
+    if(idx>0&&Math.abs(d.ts[idx-1]-b)<Math.abs(d.ts[idx]-b))idx--;
+    const win=p.tf===1?120:80;
+    p.win={size:win,right:false,endI:Math.min(d.ts.length-1,idx+(win>>1))};
+    draw(p);
+  });
+  inp.blur();
+}
+document.getElementById('jumpBtn').onclick=doJump;
+document.getElementById('jump').addEventListener('keydown',e=>{if(e.key==='Enter')doJump();});
+function sizeCharts(){
+  const hdr=document.querySelector('.hdr');
+  const bars=[...document.querySelectorAll('.bar')];
+  const used=hdr.offsetHeight+bars.reduce((s,b)=>s+b.offsetHeight+2,0)+16;
+  const h=Math.max(185,(window.innerHeight-used)/2);
+  PANELS.forEach((p,i)=>{const d=document.getElementById('ch'+i);
+    d.style.height=h+'px';p.chart.resize();});
+}
+sizeCharts();window.addEventListener('resize',sizeCharts);
+
+// ═ 十字標: 手機長按1秒開/關(同txf規格), 桌機滑鼠 ═
+const TOUCH=('ontouchstart' in window);
+function setupLongPress(p,div){
+  let timer=null,sx=0,sy=0,pinch0=null,tipDrag=null;
+  const HOLD=1000;
+  const pos=(t)=>{const r=div.getBoundingClientRect();return{x:t.clientX-r.left,y:t.clientY-r.top};};
+  function tipEl(){
+    if(!p._tip||!p._tip.isConnected){
+      p._tip=[...p.chart.getDom().querySelectorAll('div')]
+        .find(x=>x.style&&x.style.zIndex==='9999999')||null;
+    }
+    return p._tip;
+  }
+  function moveCross(x,y){
+    p.lastCrossXY=[x,y];
+    p.chart.dispatchAction({type:'showTip',x:x,y:y});
+    const d=CACHE[ckey(p.tf)];if(!d)return;
+    try{
+      const c=p.chart.convertFromPixel({seriesIndex:0},[x,y]);
+      const idx=Math.max(0,Math.min(d.ohlc.length-1,Math.round(c[0])));
+      const cv=d.ohlc[idx][1];
+      if(cv!==p.closeVal){p.closeVal=cv;
+        p.chart.setOption({series:[{markLine:{silent:true,symbol:'none',animation:false,
+          label:{show:true,position:'insideEndTop',color:'#e6e9f0',fontSize:9,formatter:fmt(cv)},
+          lineStyle:{type:'dashed',color:'rgba(230,233,240,.7)',width:1},
+          data:[{yAxis:cv}]}}]});}
+    }catch(_){}
+  }
+  function setCross(on){
+    p.cross=on;
+    if(navigator.vibrate)try{navigator.vibrate(on?[40,60,40]:40);}catch(_){ }
+    if(on){p.chart.setOption({dataZoom:[{disabled:true}]});}
+    else{
+      p.closeVal=null;p._tip=null;tipDrag=null;
+      p.chart.dispatchAction({type:'hideTip'});
+      p.chart.clear();draw(p);
+    }
+  }
+  div.addEventListener('touchstart',e=>{
+    const te=tipEl();
+    if(p.cross&&te&&e.touches.length===1&&te.contains(e.target)){
+      const q=pos(e.touches[0]);
+      const br=te.getBoundingClientRect(),r=div.getBoundingClientRect();
+      tipDrag={dx:q.x-(br.left-r.left),dy:q.y-(br.top-r.top)};
+      clearTimeout(timer);
+      return;
+    }
+    if(e.touches.length===1){
+      const t=e.touches[0];sx=t.clientX;sy=t.clientY;pinch0=null;
+      clearTimeout(timer);
+      timer=setTimeout(()=>{
+        const r=div.getBoundingClientRect();
+        setCross(!p.cross);
+        if(p.cross)moveCross(sx-r.left,sy-r.top);
+      },HOLD);
+      if(p.cross){const q=pos(t);moveCross(q.x,q.y);}
+    }else{
+      clearTimeout(timer);
+      if(p.cross&&e.touches.length===2){
+        const dx=e.touches[0].clientX-e.touches[1].clientX,
+              dy=e.touches[0].clientY-e.touches[1].clientY;
+        const d=CACHE[ckey(p.tf)],n=d?d.labels.length:0;
+        const w=p.win||{size:(p.tf===1?240:120),right:true,endI:n-1};
+        pinch0={d0:Math.hypot(dx,dy),size0:w.size,
+                endI0:w.right?n-1:w.endI,right0:w.right};
+      }
+    }
+  },{passive:true});
+  div.addEventListener('touchmove',e=>{
+    if(tipDrag&&e.touches.length===1){
+      e.preventDefault();
+      const q=pos(e.touches[0]);
+      p.tipPos=[q.x-tipDrag.dx,q.y-tipDrag.dy];
+      if(p.lastCrossXY)p.chart.dispatchAction({type:'showTip',x:p.lastCrossXY[0],y:p.lastCrossXY[1]});
+      return;
+    }
+    if(e.touches.length===1){
+      const t=e.touches[0];
+      if(Math.abs(t.clientX-sx)>12||Math.abs(t.clientY-sy)>12)clearTimeout(timer);
+      if(p.cross){e.preventDefault();const q=pos(t);moveCross(q.x,q.y);}
+    }else if(p.cross&&pinch0&&e.touches.length===2){
+      e.preventDefault();
+      const dx=e.touches[0].clientX-e.touches[1].clientX,
+            dy=e.touches[0].clientY-e.touches[1].clientY;
+      const scale=Math.hypot(dx,dy)/pinch0.d0;
+      const d=CACHE[ckey(p.tf)];if(!d)return;
+      const n=d.labels.length;
+      const size=Math.max(10,Math.min(n,Math.round(pinch0.size0/scale)));
+      p.win={size:size,right:pinch0.right0,
+             endI:pinch0.right0?n-1:Math.min(n-1,pinch0.endI0)};
+      draw(p);
+    }
+  },{passive:false});
+  const end=e=>{clearTimeout(timer);tipDrag=null;
+    if(!e.touches||e.touches.length<2)pinch0=null;};
+  div.addEventListener('touchend',end);
+  div.addEventListener('touchcancel',end);
+}
+PANELS.forEach((p,i)=>{if(TOUCH)setupLongPress(p,document.getElementById('ch'+i));});
+
+function sma(a,n){const r=Array(a.length).fill(null);if(!n||n<1)return r;
+  let s=0;for(let i=0;i<a.length;i++){s+=a[i];if(i>=n)s-=a[i-n];
+    if(i>=n-1)r[i]=+(s/n).toFixed(SYM.dp+1);}return r;}
+
+function draw(p){
+  const d=CACHE[ckey(p.tf)];if(!d)return;
+  const closes=d.ohlc.map(v=>v[1]);
+  const n=d.labels.length, show=p.tf===1?240:120;
+  let startI,endI;
+  if(p.win){endI=p.win.right?n-1:Math.min(p.win.endI,n-1);
+    startI=Math.max(0,endI-p.win.size+1);}
+  else{endI=n-1;startI=Math.max(0,n-show);}
+  const maSeries=p.ma.map((m,j)=>({name:m?('MA'+m):('ma'+j+'off'),type:'line',
+    data:m?sma(closes,m):[],connectNulls:false,symbol:'none',
+    lineStyle:{width:1.4,color:MACOLOR[j]},itemStyle:{color:MACOLOR[j]},
+    emphasis:{disabled:true}}));
+  const opt={
+    animation:false,backgroundColor:'transparent',
+    tooltip:{trigger:'axis',triggerOn:TOUCH?'none':'mousemove|click',
+      axisPointer:{type:'cross'},backgroundColor:'rgba(28,34,48,.92)',borderColor:'#333',
+      textStyle:{color:C.ink,fontSize:9,lineHeight:12},confine:!TOUCH,padding:[2,5],
+      enterable:true,transitionDuration:0,
+      position:TOUCH?function(){return p.tipPos||[8,20];}:undefined,
+      formatter:(ps)=>{let out='<b>'+(ps[0]?ps[0].axisValue:'')+'</b><br>';
+        let mas=[];
+        for(const q of ps){if(q.seriesType==='candlestick'){const v=q.value;
+            out+='開'+fmt(v[1])+' 收'+fmt(v[2])+'<br>低'+fmt(v[3])+' 高'+fmt(v[4])+'<br>';}
+          else if(q.seriesName==='量'){out+='量'+q.value+'<br>';}
+          else if(q.value!=null&&q.seriesName.indexOf('off')<0){mas.push('<span style="color:'+q.color+'">'+q.seriesName.replace('MA','M')+'</span>'+fmt(q.value));}}
+        if(mas.length)out+=mas.join(' ');
+        return out;}},
+    axisPointer:{link:[{xAxisIndex:'all'}]},
+    legend:{top:0,right:8,textStyle:{color:C.ink2,fontSize:11},itemWidth:14,
+      data:maSeries.filter((s,j)=>p.ma[j]).map(s=>s.name)},
+    grid:[{left:64,right:12,top:22,bottom:(p.volh+13)+'%'},
+          {left:64,right:12,bottom:'7%',height:p.volh+'%'}],
+    xAxis:[{type:'category',data:d.labels,gridIndex:0,axisLine:{lineStyle:{color:'#2a3245'}},
+            axisLabel:{color:C.ink2,fontSize:10},axisTick:{show:false}},
+           {type:'category',data:d.labels,gridIndex:1,axisLabel:{show:false},axisTick:{show:false},
+            axisLine:{lineStyle:{color:'#2a3245'}}}],
+    yAxis:[{scale:true,gridIndex:0,splitLine:{lineStyle:{color:'#1e2534'}},
+            axisLabel:{color:C.ink2,fontSize:10,formatter:v=>fmt(v)}},
+           {gridIndex:1,splitLine:{show:false},axisLabel:{show:false}}],
+    dataZoom:[{type:'inside',xAxisIndex:[0,1],startValue:startI,endValue:endI,
+               throttle:40,zoomOnMouseWheel:true,moveOnMouseMove:true},
+              {type:'slider',xAxisIndex:[0,1],bottom:2,height:12,borderColor:'#2a3245',
+               backgroundColor:'#1c2230',fillerColor:'rgba(43,176,237,.15)',
+               textStyle:{color:C.ink2,fontSize:10},startValue:startI,endValue:endI}],
+    series:[
+      {name:(p.tf===60?'1時':p.tf+'分')+'K',type:'candlestick',data:d.ohlc,
+       markLine:(p.cross&&p.closeVal!=null)?{silent:true,symbol:'none',animation:false,
+         label:{show:true,position:'insideEndTop',color:'#e6e9f0',fontSize:9,
+                formatter:fmt(p.closeVal)},
+         lineStyle:{type:'dashed',color:'rgba(230,233,240,.7)',width:1},
+         data:[{yAxis:p.closeVal}]}:{data:[]},
+       itemStyle:{color:C.up,color0:C.dn,borderColor:C.up,borderColor0:C.dn}},
+      ...maSeries,
+      {name:'量',type:'bar',xAxisIndex:1,yAxisIndex:1,data:d.vol,
+       itemStyle:{color:(q)=>{const o=d.ohlc[q.dataIndex];
+         return (o&&o[1]>=o[0])?'rgba(239,83,80,.45)':'rgba(38,166,154,.45)';}}}
+    ]};
+  p.chart.setOption(opt,{replaceMerge:['series','legend']});
+}
+
+// ═ 啟動 ═
+reloadAll();
+</script></body></html>
