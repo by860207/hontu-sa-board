@@ -299,6 +299,24 @@ function tickPx(p){
   el.textContent=fmt(p);
   if(lastPx!=null&&p!==lastPx)el.className='px '+(p>=lastPx?'up':'dn');
   lastPx=p;estCalc();
+  // ═ 治本: 每筆成交價直接推動當前K棒, 不等K線頻道(K線頻道/REST只做事後校正) ═
+  const now=Date.now()/1000;
+  for(const tf of new Set(PANELS.map(x=>x.tf))){
+    const d=CACHE[ckey(tf)];if(!d||!d.ts.length)continue;
+    const t0=Math.floor(now/(tf*60))*(tf*60);
+    const li=d.ts.length-1;
+    if(d.ts[li]===t0){
+      const b=d.ohlc[li];   // [開,收,低,高]
+      if(p!==b[1]||p>b[3]||p<b[2]){
+        b[1]=p;if(p>b[3])b[3]=p;if(p<b[2])b[2]=p;
+        PANELS.forEach(pp=>{if(pp.tf===tf)queueDraw(pp);});
+      }
+    }else if(t0>d.ts[li]){
+      d.ts.push(t0);d.labels.push(lbl(t0));d.ohlc.push([p,p,p,p]);d.vol.push(0);
+      if(d.ts.length>2200){d.ts.shift();d.labels.shift();d.ohlc.shift();d.vol.shift();}
+      PANELS.forEach(pp=>{if(pp.tf===tf)queueDraw(pp);});
+    }
+  }
 }
 const drawQ=new Set();let drawTimer=null;
 function queueDraw(p){
