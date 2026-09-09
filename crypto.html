@@ -3,33 +3,33 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
 <style>
-  :root{--bg:#131722;--panel:#1c2230;--panel2:#252d40;--bd:#2a3245;--ink:#e6e9f0;--ink2:#9aa3b5;
-        --up:#ef5350;--dn:#26a69a;--acc:#f0b429;--warn:#ffb74d}
+  :root{--bg:#000000;--panel:#101010;--panel2:#1a1a1a;--bd:#2a2a2a;--ink:#f2f2f2;--ink2:#9aa0a6;
+        --up:#ff3333;--dn:#00c853;--acc:#f0b429;--warn:#ffb74d}
   *{box-sizing:border-box;margin:0}
   body{background:var(--bg);color:var(--ink);font:13px/1.4 "Segoe UI","Microsoft JhengHei",sans-serif;padding:6px}
   .hdr{display:flex;gap:8px;align-items:baseline;padding:2px 8px 6px;flex-wrap:wrap}
   .hdr .px{font-size:20px;font-weight:700;font-variant-numeric:tabular-nums}
   .hdr .s{font-size:12px;color:var(--ink2)}
-  .hdr a{color:#2bb0ed;font-size:12px;text-decoration:none;margin-left:auto}
-  .symbtn{background:#252d40;color:var(--ink2);border:1px solid #2a3245;border-radius:5px;
+  .hdr a{color:#29b6f6;font-size:12px;text-decoration:none;margin-left:auto}
+  .symbtn{background:#1a1a1a;color:var(--ink2);border:1px solid #2a2a2a;border-radius:5px;
           padding:2px 10px;font-size:13px;cursor:pointer;font-family:inherit;font-weight:700}
-  .symbtn.on{background:var(--acc);color:#0b1320;border-color:var(--acc)}
+  .symbtn.on{background:var(--acc);color:#000000;border-color:var(--acc)}
   .bar{display:flex;gap:5px;align-items:center;flex-wrap:wrap;background:var(--panel);
        border-radius:6px;padding:1px 6px;margin-bottom:1px}
-  .tfbtn{background:#252d40;color:var(--ink2);border:1px solid #2a3245;border-radius:5px;
+  .tfbtn{background:#1a1a1a;color:var(--ink2);border:1px solid #2a2a2a;border-radius:5px;
          padding:1px 10px;font-size:12px;cursor:pointer;font-family:inherit}
-  .tfbtn.on{background:#2bb0ed;color:#0b1320;font-weight:700;border-color:#2bb0ed}
+  .tfbtn.on{background:#29b6f6;color:#000000;font-weight:700;border-color:#29b6f6}
   .bar label{font-size:11px;color:var(--ink2);margin-left:4px}
-  .bar input[type=number]{width:42px;background:#252d40;color:var(--ink);border:1px solid #2a3245;
+  .bar input[type=number]{width:42px;background:#1a1a1a;color:var(--ink);border:1px solid #2a2a2a;
        border-radius:4px;padding:1px 3px;font-size:12px;font-family:inherit}
-  .bar input[type=range]{width:70px;accent-color:#2bb0ed}
+  .bar input[type=range]{width:70px;accent-color:#29b6f6}
   .chart{width:100%}
   .up{color:var(--up)}.dn{color:var(--dn)}
   #dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#666;vertical-align:0}
-  #dot.ok{background:#26a69a}#dot.bad{background:#ef5350}
+  #dot.ok{background:#00c853}#dot.bad{background:#ff3333}
 
   /* ═ 浮動下單框 ═ */
-  .float{position:fixed;width:236px;background:rgba(28,34,48,.97);border:1px solid #38415a;
+  .float{position:fixed;width:236px;background:rgba(8,8,8,.97);border:1px solid #333333;
          border-radius:10px;z-index:50;box-shadow:0 8px 24px rgba(0,0,0,.5);font-size:12px}
   .fhead{display:flex;align-items:center;gap:6px;padding:7px 9px;border-bottom:1px solid var(--bd);
          cursor:grab;touch-action:none;user-select:none}
@@ -66,7 +66,7 @@
        touch-action:none;color:#5c6478;font-size:12px;display:flex;align-items:flex-end;
        justify-content:flex-end;padding:0 3px 1px 0;user-select:none}
   .float.min .rsz{display:none}
-  .pill{position:fixed;right:12px;bottom:14px;z-index:50;background:var(--acc);color:#0b1320;
+  .pill{position:fixed;right:12px;bottom:14px;z-index:50;background:var(--acc);color:#000000;
         border:0;border-radius:99px;padding:9px 16px;font:700 13px inherit;cursor:pointer;
         box-shadow:0 6px 18px rgba(0,0,0,.5);display:none}
   .pill.on{display:block}
@@ -88,7 +88,7 @@
   .crow .k{color:var(--ink2)}
   .okbtn{margin-top:14px;width:100%;padding:13px;font-size:15px;border:0;border-radius:7px;
          color:#fff;font-weight:700;cursor:pointer}
-  .okbtn.long{background:var(--up)}.okbtn.short{background:var(--dn)}.okbtn.flatc{background:#33405c}
+  .okbtn.long{background:var(--up)}.okbtn.short{background:var(--dn)}.okbtn.flatc{background:#333333}
   .cancel{margin-top:8px;width:100%;background:none;border:1px solid var(--bd);color:var(--ink2);
           border-radius:7px;padding:10px;cursor:pointer;font:14px inherit}
   .toast{position:fixed;top:14px;left:50%;transform:translateX(-50%);background:#1d3a2c;color:#7fe0b8;
@@ -136,7 +136,7 @@
     <div class="setf"><label>Secret Key</label><input id="cs" type="password" autocomplete="off"></div>
     <div class="setf"><label>Passphrase 密碼短語</label><input id="cp" type="password" autocomplete="off"></div>
     <div class="note"><b>只存這台裝置的瀏覽器</b>，不上傳任何伺服器。請確認這把金鑰<b>沒有提現權限</b>。全倉模式、市價單。</div>
-    <button class="send long" id="saveCred" style="background:#33405c">儲存金鑰</button>
+    <button class="send long" id="saveCred" style="background:#333333">儲存金鑰</button>
     <button class="ghost" id="clearCred" style="margin-top:6px;width:100%">清除金鑰</button>
   </div>
   <div class="rsz" id="rsz" title="拖曳縮放">◢</div>
@@ -167,7 +167,7 @@ const OKX='https://www.okx.com';
 const css=getComputedStyle(document.documentElement);
 const C={up:css.getPropertyValue('--up').trim(),dn:css.getPropertyValue('--dn').trim(),
          ink:css.getPropertyValue('--ink').trim(),ink2:css.getPropertyValue('--ink2').trim()};
-const MACOLOR=['#f0b429','#2bb0ed','#c678dd','#ff8a5c'];
+const MACOLOR=['#ffe600','#35c8ff','#c65fe8','#ff9100'];
 let SYM=SYMS[0];
 let PANELS=[{tf:1,ma:[5,10,20,60],volh:12},{tf:15,ma:[5,10,20,60],volh:12}];
 try{const sv=JSON.parse(localStorage.getItem('crypto_panels'));
@@ -436,7 +436,7 @@ PANELS.forEach((p,i)=>{
     +'<label>均線</label>'+p.ma.map((v,j)=>'<input type="number" min="0" max="500" value="'+v+'" data-ma="'+j+'" title="0=關閉" style="border-bottom:2px solid '+MACOLOR[j]+'">').join('')
     +'<label>量高</label><input type="range" min="6" max="26" value="'+p.volh+'" data-volh>'
     +(i===0?'<span style="display:flex;gap:4px;align-items:center;margin-left:auto">'
-      +'<input id="jump" placeholder="09091005" inputmode="numeric" style="width:90px;background:#252d40;color:var(--ink);border:1px solid #2a3245;border-radius:5px;padding:2px 6px;font-size:12px;font-family:inherit">'
+      +'<input id="jump" placeholder="09091005" inputmode="numeric" style="width:90px;background:#1a1a1a;color:var(--ink);border:1px solid #2a2a2a;border-radius:5px;padding:2px 6px;font-size:12px;font-family:inherit">'
       +'<button id="jumpBtn" class="tfbtn" style="padding:2px 10px">跳至</button></span>':'');
   const div=document.createElement('div');div.className='chart';div.id='ch'+i;
   root.appendChild(bar);root.appendChild(div);
@@ -465,7 +465,7 @@ PANELS.forEach((p,i)=>{
 function doJump(){
   const inp=document.getElementById('jump');
   const t=parseJump(inp.value);
-  if(t==null){inp.style.borderColor='#ef5350';setTimeout(()=>inp.style.borderColor='#2a3245',900);return;}
+  if(t==null){inp.style.borderColor='#ef5350';setTimeout(()=>inp.style.borderColor='#2a2a2a',900);return;}
   PANELS.forEach(p=>{
     const d=CACHE[ckey(p.tf)];if(!d||!d.ts.length)return;
     const b=Math.floor(t/(p.tf*60))*(p.tf*60);
@@ -593,7 +593,7 @@ function mkML(p,d){
   const data=[];const n=d.ohlc.length;
   if(n){const o=d.ohlc[n-1],c=o[1],up=c>=o[0];
     data.push({yAxis:c,lineStyle:{type:'dashed',color:up?C.up:C.dn,width:1},
-      label:{show:true,position:'end',distance:2,color:'#0b1320',
+      label:{show:true,position:'end',distance:2,color:'#000000',
              backgroundColor:up?C.up:C.dn,padding:[1,3],borderRadius:2,
              fontSize:9,fontWeight:700,formatter:fmt(c)}});}
   if(p.cross&&p.closeVal!=null)
@@ -616,7 +616,7 @@ function draw(p){
   const opt={
     animation:false,backgroundColor:'transparent',
     tooltip:{trigger:'axis',triggerOn:TOUCH?'none':'mousemove|click',
-      axisPointer:{type:'cross'},backgroundColor:'rgba(28,34,48,.92)',borderColor:'#333',
+      axisPointer:{type:'cross'},backgroundColor:'rgba(0,0,0,.92)',borderColor:'#333',
       textStyle:{color:C.ink,fontSize:9,lineHeight:12},confine:!TOUCH,padding:[2,5],
       enterable:true,transitionDuration:0,
       position:TOUCH?function(){return p.tipPos||[8,20];}:undefined,
@@ -633,17 +633,17 @@ function draw(p){
       data:maSeries.filter((s,j)=>p.ma[j]).map(s=>s.name)},
     grid:[{left:10,right:66,top:22,bottom:(p.volh+13)+'%'},
           {left:10,right:66,bottom:'7%',height:p.volh+'%'}],
-    xAxis:[{type:'category',data:d.labels,gridIndex:0,axisLine:{lineStyle:{color:'#2a3245'}},
+    xAxis:[{type:'category',data:d.labels,gridIndex:0,axisLine:{lineStyle:{color:'#2a2a2a'}},
             axisLabel:{color:C.ink2,fontSize:10},axisTick:{show:false}},
            {type:'category',data:d.labels,gridIndex:1,axisLabel:{show:false},axisTick:{show:false},
-            axisLine:{lineStyle:{color:'#2a3245'}}}],
-    yAxis:[{scale:true,gridIndex:0,position:'right',splitLine:{lineStyle:{color:'#1e2534'}},
+            axisLine:{lineStyle:{color:'#2a2a2a'}}}],
+    yAxis:[{scale:true,gridIndex:0,position:'right',splitLine:{lineStyle:{color:'#1c1c1c'}},
             axisLabel:{color:C.ink2,fontSize:10,formatter:v=>fmt(v)}},
            {gridIndex:1,position:'right',splitLine:{show:false},axisLabel:{show:false}}],
     dataZoom:[{type:'inside',xAxisIndex:[0,1],startValue:startI,endValue:endI,
                throttle:40,zoomOnMouseWheel:true,moveOnMouseMove:true},
-              {type:'slider',xAxisIndex:[0,1],bottom:2,height:12,borderColor:'#2a3245',
-               backgroundColor:'#1c2230',fillerColor:'rgba(43,176,237,.15)',
+              {type:'slider',xAxisIndex:[0,1],bottom:2,height:12,borderColor:'#2a2a2a',
+               backgroundColor:'#0d0d0d',fillerColor:'rgba(41,182,246,.18)',
                textStyle:{color:C.ink2,fontSize:10},startValue:startI,endValue:endI}],
     series:[
       {name:(p.tf===60?'1時':p.tf+'分')+'K',type:'candlestick',data:d.ohlc,
@@ -652,7 +652,7 @@ function draw(p){
       ...maSeries,
       {name:'量',type:'bar',xAxisIndex:1,yAxisIndex:1,data:d.vol,
        itemStyle:{color:(q)=>{const o=d.ohlc[q.dataIndex];
-         return (o&&o[1]>=o[0])?'rgba(239,83,80,.45)':'rgba(38,166,154,.45)';}}}
+         return (o&&o[1]>=o[0])?'rgba(255,51,51,.5)':'rgba(0,200,83,.5)';}}}
     ]};
   p.chart.setOption(opt,{replaceMerge:['series','legend']});
 }

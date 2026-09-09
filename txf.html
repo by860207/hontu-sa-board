@@ -3,7 +3,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
 <style>
-  :root{--bg:#131722;--panel:#1c2230;--ink:#e6e9f0;--ink2:#9aa3b5;--up:#ef5350;--dn:#26a69a;--acc:#2bb0ed}
+  :root{--bg:#000000;--panel:#101010;--ink:#f2f2f2;--ink2:#9aa0a6;--up:#ff3333;--dn:#00c853;--acc:#29b6f6}
   *{box-sizing:border-box;margin:0}
   body{background:var(--bg);color:var(--ink);font:13px/1.4 "Segoe UI","Microsoft JhengHei",sans-serif;padding:6px}
   .hdr{display:flex;gap:12px;align-items:baseline;padding:2px 8px 6px;flex-wrap:wrap}
@@ -12,11 +12,11 @@
   .hdr a{color:var(--acc);font-size:12px;text-decoration:none;margin-left:auto}
   .bar{display:flex;gap:5px;align-items:center;flex-wrap:wrap;background:var(--panel);
        border-radius:6px;padding:1px 6px;margin-bottom:1px}
-  .tfbtn{background:#252d40;color:var(--ink2);border:1px solid #2a3245;border-radius:5px;
+  .tfbtn{background:#1a1a1a;color:var(--ink2);border:1px solid #2a2a2a;border-radius:5px;
          padding:1px 10px;font-size:12px;cursor:pointer;font-family:inherit}
-  .tfbtn.on{background:var(--acc);color:#0b1320;font-weight:700;border-color:var(--acc)}
+  .tfbtn.on{background:var(--acc);color:#000000;font-weight:700;border-color:var(--acc)}
   .bar label{font-size:11px;color:var(--ink2);margin-left:4px}
-  .bar input[type=number]{width:42px;background:#252d40;color:var(--ink);border:1px solid #2a3245;
+  .bar input[type=number]{width:42px;background:#1a1a1a;color:var(--ink);border:1px solid #2a2a2a;
        border-radius:4px;padding:1px 3px;font-size:12px;font-family:inherit}
   .bar input[type=range]{width:70px;accent-color:var(--acc)}
   .chart{width:100%}
@@ -27,7 +27,7 @@
   <span class="s">本節均價線 <span id="vw">--</span>（<span id="dv">--</span>）</span>
   <span class="s" id="ts">載入中…</span>
   <span style="display:flex;gap:4px;align-items:center">
-    <input id="jump" placeholder="09021005" inputmode="numeric" style="width:110px;background:#252d40;color:var(--ink);border:1px solid #2a3245;border-radius:5px;padding:3px 6px;font-size:13px;font-family:inherit">
+    <input id="jump" placeholder="09021005" inputmode="numeric" style="width:110px;background:#1a1a1a;color:var(--ink);border:1px solid #2a2a2a;border-radius:5px;padding:3px 6px;font-size:13px;font-family:inherit">
     <button id="jumpBtn" class="tfbtn" style="padding:3px 10px">跳至</button>
   </span>
   <a href="index.html">← 訊號看板</a>
@@ -38,7 +38,7 @@ const RAW='https://raw.githubusercontent.com/by860207/hontu-sa-board/live/';
 const css=getComputedStyle(document.documentElement);
 const C={up:css.getPropertyValue('--up').trim(),dn:css.getPropertyValue('--dn').trim(),
          ink:css.getPropertyValue('--ink').trim(),ink2:css.getPropertyValue('--ink2').trim()};
-const MACOLOR=['#f0b429','#2bb0ed','#c678dd','#ff8a5c'];
+const MACOLOR=['#ffe600','#35c8ff','#c65fe8','#ff9100'];
 let PANELS=[{tf:5,ma:[5,10,20,60],volh:12},{tf:15,ma:[5,10,20,60],volh:12}];
 try{const sv=JSON.parse(localStorage.getItem('txfcloud_panels'));
     if(Array.isArray(sv)&&sv.length===2)PANELS=PANELS.map((p,i)=>Object.assign(p,sv[i]));}catch(e){}
@@ -123,7 +123,7 @@ function parseJump(s){
 function doJump(){
   const inp=document.getElementById('jump');
   const t=parseJump(inp.value);
-  if(t==null){inp.style.borderColor='#ef5350';setTimeout(()=>inp.style.borderColor='#2a3245',900);return;}
+  if(t==null){inp.style.borderColor='#ff3333';setTimeout(()=>inp.style.borderColor='#2a2a2a',900);return;}
   PANELS.forEach(p=>{
     const d=getTF(p.tf);if(!d||!d.ts.length)return;
     const b=Math.floor(t/(p.tf*60))*(p.tf*60);
@@ -306,7 +306,7 @@ function draw(p){
   const opt={
     animation:false,backgroundColor:'transparent',
     tooltip:{trigger:'axis',triggerOn:TOUCH?'none':'mousemove|click',
-      axisPointer:{type:'cross'},backgroundColor:'rgba(28,34,48,.92)',borderColor:'#333',
+      axisPointer:{type:'cross'},backgroundColor:'rgba(0,0,0,.92)',borderColor:'#333',
       textStyle:{color:C.ink,fontSize:9,lineHeight:12},confine:!TOUCH,padding:[2,5],
       enterable:true,transitionDuration:0,
       position:TOUCH?function(){return p.tipPos||[8,20];}:undefined,
@@ -323,17 +323,17 @@ function draw(p){
       data:maSeries.filter((s,j)=>p.ma[j]).map(s=>s.name)},
     grid:[{left:54,right:12,top:22,bottom:(p.volh+13)+'%'},
           {left:54,right:12,bottom:'7%',height:p.volh+'%'}],
-    xAxis:[{type:'category',data:d.labels,gridIndex:0,axisLine:{lineStyle:{color:'#2a3245'}},
+    xAxis:[{type:'category',data:d.labels,gridIndex:0,axisLine:{lineStyle:{color:'#2a2a2a'}},
             axisLabel:{color:C.ink2,fontSize:10},axisTick:{show:false}},
            {type:'category',data:d.labels,gridIndex:1,axisLabel:{show:false},axisTick:{show:false},
-            axisLine:{lineStyle:{color:'#2a3245'}}}],
-    yAxis:[{scale:true,gridIndex:0,splitLine:{lineStyle:{color:'#1e2534'}},
+            axisLine:{lineStyle:{color:'#2a2a2a'}}}],
+    yAxis:[{scale:true,gridIndex:0,splitLine:{lineStyle:{color:'#1c1c1c'}},
             axisLabel:{color:C.ink2,fontSize:10}},
            {gridIndex:1,splitLine:{show:false},axisLabel:{show:false}}],
     dataZoom:[{type:'inside',xAxisIndex:[0,1],startValue:startI,endValue:endI,
                throttle:40,zoomOnMouseWheel:true,moveOnMouseMove:true},
-              {type:'slider',xAxisIndex:[0,1],bottom:2,height:12,borderColor:'#2a3245',
-               backgroundColor:'#1c2230',fillerColor:'rgba(43,176,237,.15)',
+              {type:'slider',xAxisIndex:[0,1],bottom:2,height:12,borderColor:'#2a2a2a',
+               backgroundColor:'#0d0d0d',fillerColor:'rgba(41,182,246,.18)',
                textStyle:{color:C.ink2,fontSize:10},startValue:startI,endValue:endI}],
     series:[
       {name:p.tf+'分K',type:'candlestick',data:d.ohlc,
@@ -351,9 +351,9 @@ function draw(p){
              symbol:'arrow',symbolSize:9,symbolRotate:isB?0:180,
              symbolOffset:[0,isB?11:-11],
              name:(isB?'買 ':'賣 ')+f2.pid+' @'+f2.price+' x'+f2.qty,
-             itemStyle:{color:isB?'#2bb0ed':'#f0b429'},
+             itemStyle:{color:isB?'#29b6f6':'#f0b429'},
              label:{show:true,formatter:isB?'B':'S',position:isB?'bottom':'top',
-                    fontSize:9,fontWeight:700,color:isB?'#2bb0ed':'#f0b429'}});
+                    fontSize:9,fontWeight:700,color:isB?'#29b6f6':'#f0b429'}});
          }
          return pts;})(),
          tooltip:{trigger:'item',formatter:(q)=>q.name}},
@@ -366,7 +366,7 @@ function draw(p){
       ...maSeries,
       {name:'量',type:'bar',xAxisIndex:1,yAxisIndex:1,data:d.vol,
        itemStyle:{color:(q)=>{const o=d.ohlc[q.dataIndex];
-         return (o&&o[1]>=o[0])?'rgba(239,83,80,.45)':'rgba(38,166,154,.45)';}}}
+         return (o&&o[1]>=o[0])?'rgba(255,51,51,.5)':'rgba(0,200,83,.5)';}}}
     ]};
   p.chart.setOption(opt,{replaceMerge:['series','legend']});
 }
