@@ -3,10 +3,11 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
 <style>
-  :root{--bg:#131722;--panel:#1c2230;--ink:#e6e9f0;--ink2:#9aa3b5;--up:#ef5350;--dn:#26a69a;--acc:#f0b429}
+  :root{--bg:#131722;--panel:#1c2230;--panel2:#252d40;--bd:#2a3245;--ink:#e6e9f0;--ink2:#9aa3b5;
+        --up:#ef5350;--dn:#26a69a;--acc:#f0b429;--warn:#ffb74d}
   *{box-sizing:border-box;margin:0}
   body{background:var(--bg);color:var(--ink);font:13px/1.4 "Segoe UI","Microsoft JhengHei",sans-serif;padding:6px}
-  .hdr{display:flex;gap:10px;align-items:baseline;padding:2px 8px 6px;flex-wrap:wrap}
+  .hdr{display:flex;gap:8px;align-items:baseline;padding:2px 8px 6px;flex-wrap:wrap}
   .hdr .px{font-size:20px;font-weight:700;font-variant-numeric:tabular-nums}
   .hdr .s{font-size:12px;color:var(--ink2)}
   .hdr a{color:#2bb0ed;font-size:12px;text-decoration:none;margin-left:auto}
@@ -26,6 +27,70 @@
   .up{color:var(--up)}.dn{color:var(--dn)}
   #dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#666;vertical-align:0}
   #dot.ok{background:#26a69a}#dot.bad{background:#ef5350}
+
+  /* ═ 浮動下單框 ═ */
+  .float{position:fixed;width:236px;background:rgba(28,34,48,.97);border:1px solid #38415a;
+         border-radius:10px;z-index:50;box-shadow:0 8px 24px rgba(0,0,0,.5);font-size:12px}
+  .fhead{display:flex;align-items:center;gap:6px;padding:7px 9px;border-bottom:1px solid var(--bd);
+         cursor:grab;touch-action:none;user-select:none}
+  .fhead .grip{color:#5c6478;font-size:13px;letter-spacing:-1px}
+  .fhead .ft{font-weight:700;font-size:12.5px}
+  .fhead .ft small{color:var(--ink2);font-weight:400;margin-left:3px}
+  .fhead .hb{margin-left:auto;display:flex;gap:2px}
+  .fhead button{background:none;border:0;color:var(--ink2);font-size:14px;cursor:pointer;padding:0 5px}
+  .fbody{padding:8px 10px 10px}
+  .oseg{display:flex;border:1px solid var(--bd);border-radius:7px;overflow:hidden;margin-bottom:8px}
+  .oseg button{flex:1;background:var(--panel2);border:0;color:var(--ink2);padding:6px;font:700 12.5px inherit;cursor:pointer}
+  .oseg button.on-long{background:var(--up);color:#fff}
+  .oseg button.on-short{background:var(--dn);color:#fff}
+  .sld{margin-bottom:6px}
+  .sld .top{display:flex;justify-content:space-between;align-items:baseline}
+  .sld .top label{font-size:10.5px;color:var(--ink2)}
+  .sld .top b{font-size:13px;font-variant-numeric:tabular-nums}
+  .sld input[type=range]{width:100%;height:20px;accent-color:var(--acc);cursor:pointer;touch-action:none}
+  .est{font-size:11px;color:var(--ink2);display:flex;justify-content:space-between;
+       font-variant-numeric:tabular-nums;line-height:1.65}
+  .est b{color:var(--ink)}
+  .warnline{font-size:10.5px;color:var(--warn);margin-top:2px;line-height:1.5}
+  .send{width:100%;border:0;border-radius:7px;color:#fff;font:700 13.5px inherit;padding:9px;cursor:pointer;margin-top:7px}
+  .send.long{background:var(--up)}.send.short{background:var(--dn)}
+  .send:disabled{opacity:.45}
+  .posrow{margin-top:8px;border-top:1px dashed var(--bd);padding-top:7px;display:none;
+          align-items:center;gap:6px;font-size:11.5px;flex-wrap:wrap}
+  .posrow.on{display:flex}
+  .posrow .flat{margin-left:auto;background:var(--panel2);border:1px solid var(--bd);color:var(--ink);
+                border-radius:6px;padding:5px 10px;font:12px inherit;cursor:pointer}
+  .pnl{font-variant-numeric:tabular-nums}
+  .float.min .fbody{display:none}
+  .pill{position:fixed;right:12px;bottom:14px;z-index:50;background:var(--acc);color:#0b1320;
+        border:0;border-radius:99px;padding:9px 16px;font:700 13px inherit;cursor:pointer;
+        box-shadow:0 6px 18px rgba(0,0,0,.5);display:none}
+  .pill.on{display:block}
+  .setf{background:var(--panel2);border:1px solid var(--bd);border-radius:7px;padding:6px 9px;margin-bottom:7px}
+  .setf label{font-size:10px;color:var(--ink2);display:block}
+  .setf input{width:100%;background:none;border:0;color:var(--ink);font:600 13px inherit;outline:none}
+  .note{font-size:10.5px;color:var(--ink2);line-height:1.55;margin:6px 0}
+  .note b{color:var(--warn)}
+  .ghost{background:none;border:1px solid var(--bd);color:var(--ink2);border-radius:6px;
+         padding:5px 10px;font:11.5px inherit;cursor:pointer}
+  .confirm{position:fixed;inset:0;background:rgba(11,14,21,.93);z-index:60;display:none;
+           flex-direction:column;justify-content:center;padding:26px}
+  .confirm.open{display:flex}
+  .ccard{max-width:360px;margin:0 auto;width:100%;background:var(--panel);border:1px solid var(--bd);border-radius:12px;padding:18px}
+  .ccard h3{font-size:16px;margin-bottom:12px}
+  .crow{display:flex;justify-content:space-between;font-size:14px;padding:5px 0;
+        border-bottom:1px dashed #232a3c;font-variant-numeric:tabular-nums}
+  .crow:last-of-type{border:0}
+  .crow .k{color:var(--ink2)}
+  .okbtn{margin-top:14px;width:100%;padding:13px;font-size:15px;border:0;border-radius:7px;
+         color:#fff;font-weight:700;cursor:pointer}
+  .okbtn.long{background:var(--up)}.okbtn.short{background:var(--dn)}.okbtn.flatc{background:#33405c}
+  .cancel{margin-top:8px;width:100%;background:none;border:1px solid var(--bd);color:var(--ink2);
+          border-radius:7px;padding:10px;cursor:pointer;font:14px inherit}
+  .toast{position:fixed;top:14px;left:50%;transform:translateX(-50%);background:#1d3a2c;color:#7fe0b8;
+         border:1px solid #2d5c44;border-radius:8px;padding:8px 18px;font-size:13px;z-index:70;display:none;
+         white-space:nowrap;max-width:92vw;overflow:hidden;text-overflow:ellipsis}
+  .toast.err{background:#3a1d1d;color:#ffb3b3;border-color:#5c2d2d}
 </style></head><body>
 <div class="hdr">
   <span id="syms"></span>
@@ -36,13 +101,64 @@
   <a href="index.html">← 訊號看板</a>
 </div>
 <div id="panels"></div>
+
+<!-- ═ 浮動下單框 (OKX永續·市價) ═ -->
+<div class="float" id="fl" style="right:10px;bottom:14px" hidden>
+  <div class="fhead" id="fhead">
+    <span class="grip">⠿</span><span class="ft" id="fTitle">BTC-USDT<small>OKX永續·市價</small></span>
+    <span class="hb"><button id="setBtn" title="金鑰設定">⚙</button><button id="minBtn" title="收合">—</button><button id="hideBtn" title="關閉">✕</button></span>
+  </div>
+  <div class="fbody" id="tradeBody">
+    <div class="oseg"><button id="oLong" class="on-long">做多</button><button id="oShort">做空</button></div>
+    <div class="sld">
+      <div class="top"><label id="levLab">槓桿</label><b id="levV" style="color:var(--acc)">5x</b></div>
+      <input type="range" id="lev" min="1" max="100" step="1" value="5">
+    </div>
+    <div class="sld">
+      <div class="top"><label>倉位（可用×槓桿）</label><b id="pctV">20%</b></div>
+      <input type="range" id="pct" min="0" max="100" step="1" value="20">
+    </div>
+    <div class="est"><span>可用 <b id="estAvail">--</b></span><span>名目 <b id="estNot">--</b></span></div>
+    <div class="est"><span>≈ <b id="estCoin">--</b></span><span>保證金 <b id="estMar">--</b></span></div>
+    <div class="warnline" id="ordWarn" hidden></div>
+    <button class="send long" id="sendBtn">市價買入</button>
+    <div class="posrow" id="posRow">
+      <b id="posTxt">--</b><span class="pnl" id="posPnl"></span><span class="s" id="posSub"></span>
+      <button class="flat" id="flatBtn">市價平倉</button>
+    </div>
+  </div>
+  <div class="fbody" id="setBody" hidden>
+    <div class="setf"><label>OKX API Key</label><input id="ck" autocomplete="off"></div>
+    <div class="setf"><label>Secret Key</label><input id="cs" type="password" autocomplete="off"></div>
+    <div class="setf"><label>Passphrase 密碼短語</label><input id="cp" type="password" autocomplete="off"></div>
+    <div class="note"><b>只存這台裝置的瀏覽器</b>，不上傳任何伺服器。請確認這把金鑰<b>沒有提現權限</b>。全倉模式、市價單。</div>
+    <button class="send long" id="saveCred" style="background:#33405c">儲存金鑰</button>
+    <button class="ghost" id="clearCred" style="margin-top:6px;width:100%">清除金鑰</button>
+  </div>
+</div>
+<button class="pill" id="pill">下單</button>
+
+<div class="confirm" id="confirm">
+  <div class="ccard">
+    <h3 id="cTitle">確認市價下單</h3>
+    <div id="cRows"></div>
+    <button class="okbtn long" id="okBtn">確認送出</button>
+    <button class="cancel" id="cCancel">取消</button>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
 <script>
-// ═ 虛擬幣秒級看盤 v1 (2026-09-09) ═
-// 資料源: 幣安USDT-M永續合約(對應Phase2合約下單)。歷史=REST klines, 即時=WebSocket推送(kline流~250ms一筆)
-// 介面沿用 txf.html v11: 雙面板/長按十字標/雙指縮放/跳至時間
-const SYMS=[{s:'BTCUSDT',n:'BTC',dp:1},{s:'ETHUSDT',n:'ETH',dp:2},{s:'SOLUSDT',n:'SOL',dp:3}];
-const TFS=[{tf:1,iv:'1m'},{tf:5,iv:'5m'},{tf:15,iv:'15m'},{tf:60,iv:'1h'}];
-const REST='https://fapi.binance.com/fapi/v1/klines';
+// ═ 虛擬幣秒級看盤 v2 (2026-09-09) ═
+// 行情三層自動切換: 幣安WS → OKX WS → REST輪詢(當前源)。下單: OKX永續 市價/全倉。
+// 金鑰只存瀏覽器localStorage, 絕不進repo。
+const SYMS=[
+  {s:'BTCUSDT',n:'BTC',dp:1,inst:'BTC-USDT-SWAP'},
+  {s:'ETHUSDT',n:'ETH',dp:2,inst:'ETH-USDT-SWAP'},
+  {s:'SOLUSDT',n:'SOL',dp:2,inst:'SOL-USDT-SWAP'}];
+const TFS=[{tf:1,iv:'1m',ob:'1m'},{tf:5,iv:'5m',ob:'5m'},{tf:15,iv:'15m',ob:'15m'},{tf:60,iv:'1h',ob:'1H'}];
+const REST_BN='https://fapi.binance.com/fapi/v1/klines';
+const OKX='https://www.okx.com';
 const css=getComputedStyle(document.documentElement);
 const C={up:css.getPropertyValue('--up').trim(),dn:css.getPropertyValue('--dn').trim(),
          ink:css.getPropertyValue('--ink').trim(),ink2:css.getPropertyValue('--ink2').trim()};
@@ -55,28 +171,43 @@ try{const sv=JSON.parse(localStorage.getItem('crypto_panels'));
 function save(){try{localStorage.setItem('crypto_panels',JSON.stringify(
   {sym:SYM.s,p:PANELS.map(p=>({tf:p.tf,ma:p.ma,volh:p.volh}))}));}catch(e){}}
 
-const CACHE={};                 // "SYM_tf" -> {labels,ohlc,vol,ts}
+const CACHE={};
 const ckey=tf=>SYM.s+'_'+tf;
-const ivOf=tf=>TFS.find(x=>x.tf===tf).iv;
+const tfDef=tf=>TFS.find(x=>x.tf===tf);
 const fmt=v=>v==null?'--':(+v).toLocaleString(undefined,{minimumFractionDigits:SYM.dp,maximumFractionDigits:SYM.dp});
 function pad(n){return (n<10?'0':'')+n;}
 function lbl(ts){const d=new Date(ts*1000);
   return pad(d.getMonth()+1)+'-'+pad(d.getDate())+' '+pad(d.getHours())+':'+pad(d.getMinutes());}
 
-// ═ 歷史K: REST一次抓滿(1m最多1500根=25小時, 其餘各1000根) ═
+// ═══ 行情資料層: SRC='bn'(幣安)|'okx' ═══
+let SRC='bn';
 async function loadTF(tf){
-  const k=ckey(tf);
-  const lim=tf===1?1500:1000;
-  const r=await fetch(REST+'?symbol='+SYM.s+'&interval='+ivOf(tf)+'&limit='+lim);
-  if(!r.ok)throw new Error('klines '+r.status);
-  const raw=await r.json();
-  const d={labels:[],ohlc:[],vol:[],ts:[]};
-  for(const b of raw){const t0=b[0]/1000;
-    d.ts.push(t0);d.labels.push(lbl(t0));
-    d.ohlc.push([+b[1],+b[4],+b[3],+b[2]]);d.vol.push(+(+b[5]).toFixed(1));}
+  const k=ckey(tf),d={labels:[],ohlc:[],vol:[],ts:[]};
+  if(SRC==='bn'){
+    const lim=tf===1?1500:1000;
+    const r=await fetch(REST_BN+'?symbol='+SYM.s+'&interval='+tfDef(tf).iv+'&limit='+lim);
+    if(!r.ok)throw new Error('bn '+r.status);
+    for(const b of await r.json()){const t0=b[0]/1000;
+      d.ts.push(t0);d.labels.push(lbl(t0));
+      d.ohlc.push([+b[1],+b[4],+b[3],+b[2]]);d.vol.push(+(+b[5]).toFixed(1));}
+  }else{
+    // OKX: 最新在前, after往回翻3頁≈900根
+    let rows=[],after='';
+    for(let pg=0;pg<3;pg++){
+      const r=await fetch(OKX+'/api/v5/market/candles?instId='+SYM.inst+'&bar='+tfDef(tf).ob+'&limit=300'+after);
+      if(!r.ok)break;
+      const j=await r.json();
+      if(j.code!=='0'||!j.data.length)break;
+      rows=rows.concat(j.data);
+      after='&after='+j.data[j.data.length-1][0];
+    }
+    rows.reverse();
+    for(const b of rows){const t0=+b[0]/1000;
+      d.ts.push(t0);d.labels.push(lbl(t0));
+      d.ohlc.push([+b[1],+b[4],+b[3],+b[2]]);d.vol.push(+(+b[5]).toFixed(1));}
+  }
   CACHE[k]=d;return d;
 }
-// WS kline事件 → 更新/追加最後一根
 function applyK(tf,k){
   const d=CACHE[ckey(tf)];if(!d)return;
   const t0=k.t/1000;
@@ -89,40 +220,69 @@ function applyK(tf,k){
   }
 }
 
-// ═ WebSocket: aggTrade(毫秒級成交價)+ticker(24h統計)+各面板kline流; 換幣/換週期重建連線 ═
-let WS=null,wsSeq=0,lastMsg=0;
+// ═══ WebSocket(雙源) ═══
+let WS=null,wsSeq=0,lastMsg=0,okxPing=null,TICK24=null;
 function connectWS(){
   const my=++wsSeq;
   if(WS){try{WS.close();}catch(e){}WS=null;}
-  const s=SYM.s.toLowerCase();
+  if(okxPing){clearInterval(okxPing);okxPing=null;}
   const tfs=[...new Set(PANELS.map(p=>p.tf))];
-  const streams=[s+'@aggTrade',s+'@ticker',...tfs.map(t=>s+'@kline_'+ivOf(t))];
-  const ws=new WebSocket('wss://fstream.binance.com/stream?streams='+streams.join('/'));
+  let ws;
+  if(SRC==='bn'){
+    const s=SYM.s.toLowerCase();
+    const streams=[s+'@aggTrade',s+'@ticker',...tfs.map(t=>s+'@kline_'+tfDef(t).iv)];
+    ws=new WebSocket('wss://fstream.binance.com/stream?streams='+streams.join('/'));
+    ws.onmessage=(ev)=>{
+      if(my!==wsSeq)return;
+      lastMsg=Date.now();
+      const m=JSON.parse(ev.data),st=m.stream,dd=m.data;
+      if(st.endsWith('@aggTrade')){tickPx(+dd.p);}
+      else if(st.endsWith('@ticker')){TICK24={c:+dd.c,P:+dd.P,h:+dd.h,l:+dd.l};header();}
+      else if(st.indexOf('@kline_')>=0){
+        const t=TFS.find(x=>x.iv===st.split('@kline_')[1]);if(!t)return;
+        applyK(t.tf,dd.k);
+        PANELS.forEach(p=>{if(p.tf===t.tf)queueDraw(p);});
+      }
+    };
+  }else{
+    ws=new WebSocket('wss://ws.okx.com:8443/ws/v5/public');
+    ws.onopen=()=>{
+      if(my!==wsSeq)return;
+      const args=[{channel:'tickers',instId:SYM.inst},{channel:'trades',instId:SYM.inst},
+        ...tfs.map(t=>({channel:'candle'+tfDef(t).ob,instId:SYM.inst}))];
+      ws.send(JSON.stringify({op:'subscribe',args:args}));
+      okxPing=setInterval(()=>{try{ws.send('ping');}catch(e){}},20000);
+    };
+    ws.onmessage=(ev)=>{
+      if(my!==wsSeq)return;
+      lastMsg=Date.now();
+      if(ev.data==='pong')return;
+      let m;try{m=JSON.parse(ev.data);}catch(e){return;}
+      if(m.event||!m.arg||!m.data)return;
+      const ch=m.arg.channel;
+      if(ch==='trades'){tickPx(+m.data[0].px);}
+      else if(ch==='tickers'){const t=m.data[0];
+        TICK24={c:+t.last,P:+((+t.last-+t.open24h)/+t.open24h*100).toFixed(2),h:+t.high24h,l:+t.low24h};header();}
+      else if(ch.startsWith('candle')){
+        const t=TFS.find(x=>'candle'+x.ob===ch);if(!t)return;
+        const b=m.data[0];
+        applyK(t.tf,{t:+b[0],o:b[1],h:b[2],l:b[3],c:b[4],v:b[5]});
+        tickPx(+b[4]);
+        PANELS.forEach(p=>{if(p.tf===t.tf)queueDraw(p);});
+      }
+    };
+  }
   WS=ws;
-  ws.onmessage=(ev)=>{
-    if(my!==wsSeq)return;
-    lastMsg=Date.now();
-    const m=JSON.parse(ev.data),st=m.stream,d=m.data;
-    if(st.endsWith('@aggTrade')){tickPx(+d.p);}
-    else if(st.endsWith('@ticker')){TICK24={c:+d.c,P:+d.P,h:+d.h,l:+d.l};header();}
-    else if(st.indexOf('@kline_')>=0){
-      const iv=st.split('@kline_')[1];
-      const tf=TFS.find(x=>x.iv===iv);if(!tf)return;
-      applyK(tf.tf,d.k);
-      PANELS.forEach(p=>{if(p.tf===tf.tf)queueDraw(p);});
-    }
-  };
   ws.onclose=()=>{if(my===wsSeq)setTimeout(()=>{if(my===wsSeq)connectWS();},2000);};
   ws.onerror=()=>{try{ws.close();}catch(e){}};
 }
-let TICK24=null;
-// 秒級跳動只改DOM數字(輕), K棒重畫節流至每400ms(手機省電)
+// 秒級跳動只改DOM數字, K棒重畫節流400ms
 let lastPx=null;
 function tickPx(p){
   const el=document.getElementById('px');
   el.textContent=fmt(p);
-  if(lastPx!=null)el.className='px '+(p>=lastPx?'up':'dn');
-  lastPx=p;
+  if(lastPx!=null&&p!==lastPx)el.className='px '+(p>=lastPx?'up':'dn');
+  lastPx=p;estCalc();
 }
 const drawQ=new Set();let drawTimer=null;
 function queueDraw(p){
@@ -138,44 +298,66 @@ function header(){
     el('chg').className=TICK24.P>=0?'up':'dn';
     el('hi').textContent=fmt(TICK24.h);el('lo').textContent=fmt(TICK24.l);
   }
+  const srcName=SRC==='bn'?'幣安':'OKX';
   const age=lastMsg?(Date.now()-lastMsg)/1000:9e9;
   const bAge=bkTick?(Date.now()-bkTick)/1000:9e9;
   const dot=el('dot');
-  if(age<10){dot.className='ok';el('ts').textContent='即時';}
-  else if(bAge<25){dot.className='bad';el('ts').textContent='REST備援(10秒)';}
+  if(age<10){dot.className='ok';el('ts').textContent='即時·'+srcName;}
+  else if(bAge<25){dot.className='bad';el('ts').textContent='REST備援·'+srcName;}
   else if(lastMsg||bkTick){dot.className='bad';el('ts').textContent='⚠斷線';}
   else el('ts').textContent='連線中…';
 }
 setInterval(header,1000);
-// ═ 看門狗: WS超過15秒沒訊息→重建連線 ═
-setInterval(()=>{if(lastMsg&&Date.now()-lastMsg>15000)connectWS();},15000);
-// ═ REST備援輪詢: WS沒資料時每10秒補最新3根K+24h統計, 保證畫面一定會走 ═
+// ═ 換源看門狗: 幣安WS 12秒沒資料→整組切OKX(歷史+WS重載); OKX也沒有→REST備援撐著 ═
+let srcSwitched=false;
+setInterval(()=>{
+  const age=lastMsg?(Date.now()-lastMsg):(Date.now()-t0Load);
+  if(SRC==='bn'&&!srcSwitched&&age>12000){
+    srcSwitched=true;SRC='okx';
+    for(const k in CACHE)delete CACHE[k];
+    reloadAll();
+    return;
+  }
+  if(lastMsg&&Date.now()-lastMsg>15000)connectWS();
+},6000);
+const t0Load=Date.now();
+// ═ REST備援輪詢(跟隨當前源) ═
 let bkTick=0;
 setInterval(async()=>{
   if(lastMsg&&Date.now()-lastMsg<12000)return;
   for(const tf of [...new Set(PANELS.map(p=>p.tf))]){
     try{
-      const r=await fetch(REST+'?symbol='+SYM.s+'&interval='+ivOf(tf)+'&limit=3');
-      if(!r.ok)continue;
-      const raw=await r.json();
-      for(const b of raw)applyK(tf,{t:b[0],o:b[1],h:b[2],l:b[3],c:b[4],v:b[5]});
+      if(SRC==='bn'){
+        const r=await fetch(REST_BN+'?symbol='+SYM.s+'&interval='+tfDef(tf).iv+'&limit=3');
+        if(!r.ok)continue;
+        for(const b of await r.json())applyK(tf,{t:b[0],o:b[1],h:b[2],l:b[3],c:b[4],v:b[5]});
+      }else{
+        const r=await fetch(OKX+'/api/v5/market/candles?instId='+SYM.inst+'&bar='+tfDef(tf).ob+'&limit=3');
+        if(!r.ok)continue;
+        const j=await r.json();if(j.code!=='0')continue;
+        for(const b of j.data.slice().reverse())applyK(tf,{t:+b[0],o:b[1],h:b[2],l:b[3],c:b[4],v:b[5]});
+      }
       bkTick=Date.now();
       PANELS.forEach(p=>{if(p.tf===tf)queueDraw(p);});
     }catch(e){}
   }
   try{
-    const r=await fetch('https://fapi.binance.com/fapi/v1/ticker/24hr?symbol='+SYM.s);
-    if(r.ok){const d=await r.json();
-      TICK24={c:+d.lastPrice,P:+d.priceChangePercent,h:+d.highPrice,l:+d.lowPrice};}
+    if(SRC==='bn'){
+      const r=await fetch('https://fapi.binance.com/fapi/v1/ticker/24hr?symbol='+SYM.s);
+      if(r.ok){const d=await r.json();
+        TICK24={c:+d.lastPrice,P:+d.priceChangePercent,h:+d.highPrice,l:+d.lowPrice};}
+    }else{
+      const r=await fetch(OKX+'/api/v5/market/ticker?instId='+SYM.inst);
+      if(r.ok){const j=await r.json();
+        if(j.code==='0'){const t=j.data[0];
+          TICK24={c:+t.last,P:+((+t.last-+t.open24h)/+t.open24h*100).toFixed(2),h:+t.high24h,l:+t.low24h};}}
+    }
   }catch(e){}
   const d=CACHE[ckey(PANELS[0].tf)];
   if(d&&d.ohlc.length)tickPx(d.ohlc[d.ohlc.length-1][1]);
   header();
 },10000);
-// 手機切回前景: WS多半被系統殺掉 → 重抓歷史+重連(補上背景期間的洞)
-document.addEventListener('visibilitychange',()=>{
-  if(!document.hidden){reloadAll();}
-});
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)reloadAll();});
 async function reloadAll(){
   connectWS();
   for(const tf of [...new Set(PANELS.map(p=>p.tf))]){
@@ -184,7 +366,7 @@ async function reloadAll(){
   PANELS.forEach(p=>{p.chart&&draw(p);});
 }
 
-// ═ 輸入時間跳K棒: 「09021005」「9/2 10:05」「10:05(=今天)」 ═
+// ═══ UI:幣別/面板/十字標(與v1同) ═══
 function parseJump(s){
   s=s.trim();const now=new Date();
   let m=s.match(/^(\d{2})(\d{2})(\d{2})(\d{2})$/);
@@ -197,8 +379,6 @@ function parseJump(s){
   if(m)return new Date(now.getFullYear(),now.getMonth(),now.getDate(),+m[1],+m[2]).getTime()/1000;
   return null;
 }
-
-// ═ UI ═
 const symBox=document.getElementById('syms');
 SYMS.forEach(sy=>{
   const b=document.createElement('button');b.className='symbtn'+(sy===SYM?' on':'');
@@ -209,6 +389,7 @@ SYMS.forEach(sy=>{
     symBox.querySelectorAll('.symbtn').forEach(x=>x.classList.toggle('on',x===b));
     document.getElementById('px').textContent='--';
     PANELS.forEach(p=>{p.win=null;p.chart&&p.chart.clear();});
+    ordSymSync();
     await reloadAll();
   };
   symBox.appendChild(b);
@@ -274,8 +455,6 @@ function sizeCharts(){
     d.style.height=h+'px';p.chart.resize();});
 }
 sizeCharts();window.addEventListener('resize',sizeCharts);
-
-// ═ 十字標: 手機長按1秒開/關(同txf規格), 桌機滑鼠 ═
 const TOUCH=('ontouchstart' in window);
 function setupLongPress(p,div){
   let timer=null,sx=0,sy=0,pinch0=null,tipDrag=null;
@@ -375,8 +554,6 @@ PANELS.forEach((p,i)=>{if(TOUCH)setupLongPress(p,document.getElementById('ch'+i)
 function sma(a,n){const r=Array(a.length).fill(null);if(!n||n<1)return r;
   let s=0;for(let i=0;i<a.length;i++){s+=a[i];if(i>=n)s-=a[i-n];
     if(i>=n-1)r[i]=+(s/n).toFixed(SYM.dp+1);}return r;}
-
-// 現價虛線(右軸價籤,隨行情跳動) + 十字標收盤虛線, 合成一組markLine
 function mkML(p,d){
   const data=[];const n=d.ohlc.length;
   if(n){const o=d.ohlc[n-1],c=o[1],up=c>=o[0];
@@ -389,7 +566,6 @@ function mkML(p,d){
       label:{show:true,position:'insideEndTop',color:'#e6e9f0',fontSize:9,formatter:fmt(p.closeVal)}});
   return {silent:true,symbol:'none',animation:false,data:data};
 }
-
 function draw(p){
   const d=CACHE[ckey(p.tf)];if(!d)return;
   const closes=d.ohlc.map(v=>v[1]);
@@ -446,6 +622,223 @@ function draw(p){
   p.chart.setOption(opt,{replaceMerge:['series','legend']});
 }
 
+// ═══════════ OKX 下單面板 ═══════════
+const $=id=>document.getElementById(id);
+let CREDS=null;try{CREDS=JSON.parse(localStorage.getItem('okx_creds'));}catch(e){}
+let SPEC={},AVAIL=0,POSMAP={},SIDE='long',pend=null,acctTimer=null;
+const fl=$('fl');
+fl.hidden=false;
+if(!CREDS)showSet(true);
+
+function showSet(on){$('setBody').hidden=!on;$('tradeBody').hidden=on;
+  if(on&&CREDS){$('ck').value=CREDS.k;$('cs').value=CREDS.s;$('cp').value=CREDS.p;}}
+$('setBtn').onclick=()=>showSet($('setBody').hidden);
+$('saveCred').onclick=()=>{
+  const k=$('ck').value.trim(),s=$('cs').value.trim(),p=$('cp').value;
+  if(!k||!s||!p){toast('三格都要填','err');return;}
+  CREDS={k:k,s:s,p:p};
+  try{localStorage.setItem('okx_creds',JSON.stringify(CREDS));}catch(e){}
+  showSet(false);toast('金鑰已存到這台裝置');initAcct();
+};
+$('clearCred').onclick=()=>{
+  CREDS=null;try{localStorage.removeItem('okx_creds');}catch(e){}
+  $('ck').value=$('cs').value=$('cp').value='';
+  toast('已清除');};
+$('minBtn').onclick=()=>{fl.classList.toggle('min');
+  $('minBtn').textContent=fl.classList.contains('min')?'▢':'—';};
+$('hideBtn').onclick=()=>{fl.style.display='none';$('pill').classList.add('on');};
+$('pill').onclick=()=>{fl.style.display='';$('pill').classList.remove('on');};
+// 拖曳
+let fdrag=null;
+$('fhead').addEventListener('pointerdown',e=>{
+  if(e.target.tagName==='BUTTON')return;
+  const r=fl.getBoundingClientRect();
+  fdrag={dx:e.clientX-r.left,dy:e.clientY-r.top};
+  fl.style.right='auto';fl.style.bottom='auto';
+  fl.style.left=r.left+'px';fl.style.top=r.top+'px';
+  $('fhead').setPointerCapture(e.pointerId);
+});
+$('fhead').addEventListener('pointermove',e=>{
+  if(!fdrag)return;
+  const fr=fl.getBoundingClientRect();
+  let x=e.clientX-fdrag.dx,y=e.clientY-fdrag.dy;
+  x=Math.max(2,Math.min(window.innerWidth-fr.width-2,x));
+  y=Math.max(2,Math.min(window.innerHeight-fr.height-2,y));
+  fl.style.left=x+'px';fl.style.top=y+'px';
+});
+$('fhead').addEventListener('pointerup',()=>fdrag=null);
+
+// ═ OKX簽名請求 (WebCrypto HMAC-SHA256→base64) ═
+async function okxApi(method,path,body){
+  if(!CREDS)throw new Error('未設定金鑰');
+  const ts=new Date().toISOString();
+  const bodyStr=body?JSON.stringify(body):'';
+  const enc=new TextEncoder();
+  const key=await crypto.subtle.importKey('raw',enc.encode(CREDS.s),
+    {name:'HMAC',hash:'SHA-256'},false,['sign']);
+  const sigBuf=await crypto.subtle.sign('HMAC',key,enc.encode(ts+method+path+bodyStr));
+  const sig=btoa(String.fromCharCode(...new Uint8Array(sigBuf)));
+  const r=await fetch(OKX+path,{method:method,
+    headers:{'OK-ACCESS-KEY':CREDS.k,'OK-ACCESS-SIGN':sig,'OK-ACCESS-TIMESTAMP':ts,
+             'OK-ACCESS-PASSPHRASE':CREDS.p,'Content-Type':'application/json'},
+    body:body?bodyStr:undefined});
+  const j=await r.json();
+  if(j.code!=='0'){
+    const sub=(j.data&&j.data[0]&&j.data[0].sMsg)?j.data[0].sMsg:'';
+    throw new Error((j.msg||('code '+j.code))+(sub?(' | '+sub):''));
+  }
+  return j.data;
+}
+// 合約規格(公開)
+async function loadSpecs(){
+  for(const sy of SYMS){
+    try{
+      const r=await fetch(OKX+'/api/v5/public/instruments?instType=SWAP&instId='+sy.inst);
+      const j=await r.json();
+      if(j.code==='0'&&j.data.length){const d=j.data[0];
+        SPEC[sy.inst]={ctVal:+d.ctVal,minSz:+d.minSz,lotSz:+d.lotSz,lever:+d.lever,
+                       lotDec:(d.lotSz.split('.')[1]||'').length};}
+    }catch(e){}
+  }
+  ordSymSync();
+}
+function ordSymSync(){
+  $('fTitle').innerHTML=SYM.inst.replace('-SWAP','')+'<small>OKX永續·市價</small>';
+  const sp=SPEC[SYM.inst];
+  if(sp){$('lev').max=sp.lever;
+    if(+$('lev').value>sp.lever)$('lev').value=sp.lever;
+    $('levLab').textContent='槓桿（上限'+sp.lever+'x）';}
+  renderPos();estCalc();
+}
+async function refreshAcct(){
+  if(!CREDS)return;
+  try{
+    const bal=await okxApi('GET','/api/v5/account/balance?ccy=USDT',null);
+    const det=bal[0].details;
+    AVAIL=det&&det.length?+det[0].availBal:0;
+  }catch(e){}
+  try{
+    const ps=await okxApi('GET','/api/v5/account/positions?instType=SWAP',null);
+    POSMAP={};
+    for(const p of ps){if(+p.pos!==0)POSMAP[p.instId]=p;}
+  }catch(e){}
+  renderPos();estCalc();
+}
+function initAcct(){
+  refreshAcct();
+  if(acctTimer)clearInterval(acctTimer);
+  acctTimer=setInterval(refreshAcct,8000);
+}
+function renderPos(){
+  const p=POSMAP[SYM.inst];
+  const others=Object.keys(POSMAP).filter(k=>k!==SYM.inst).length;
+  if(!p){$('posRow').classList.toggle('on',others>0);
+    $('posTxt').textContent=others?('另有'+others+'筆其他幣持倉'):'';
+    $('posTxt').style.color='var(--ink2)';$('posPnl').textContent='';$('posSub').textContent='';
+    $('flatBtn').style.display='none';return;}
+  const sz=+p.pos,long=sz>0;
+  $('posRow').classList.add('on');$('flatBtn').style.display='';
+  $('posTxt').textContent=(long?'多 ':'空 ')+Math.abs(sz)+'張 @'+(+p.avgPx).toLocaleString();
+  $('posTxt').style.color=long?'var(--up)':'var(--dn)';
+  const upl=+p.upl;
+  $('posPnl').textContent=(upl>=0?'+':'')+upl.toFixed(2)+'U';
+  $('posPnl').style.color=upl>=0?'var(--up)':'var(--dn)';
+  $('posSub').textContent=p.lever+'x'+(p.liqPx?(' 強平'+(+p.liqPx).toLocaleString()):'')
+    +(others?(' · 另有'+others+'筆他幣倉'):'');
+}
+function setSide(s){SIDE=s;
+  $('oLong').className=s==='long'?'on-long':'';$('oShort').className=s==='short'?'on-short':'';
+  $('sendBtn').className='send '+(s==='long'?'long':'short');
+  $('sendBtn').textContent=s==='long'?'市價買入':'市價賣出';estCalc();}
+$('oLong').onclick=()=>setSide('long');$('oShort').onclick=()=>setSide('short');
+function calcOrder(){
+  const sp=SPEC[SYM.inst];
+  if(!sp||!lastPx)return null;
+  const lev=+$('lev').value,pct=+$('pct').value;
+  const notional=AVAIL*lev*pct/100;
+  const rawCt=notional/lastPx/sp.ctVal;
+  const ct=Math.floor(rawCt/sp.lotSz)*sp.lotSz;
+  const szStr=ct.toFixed(sp.lotDec);
+  return {lev:lev,pct:pct,notional:+szStr*sp.ctVal*lastPx,coins:+szStr*sp.ctVal,
+          sz:szStr,ok:+szStr>=sp.minSz};
+}
+function estCalc(){
+  if($('tradeBody').hidden)return;
+  const lev=+$('lev').value,pct=+$('pct').value;
+  $('levV').textContent=lev+'x';$('pctV').textContent=pct+'%';
+  $('estAvail').textContent=AVAIL?AVAIL.toFixed(1)+'U':'--';
+  const o=calcOrder();
+  if(!o){$('estNot').textContent='--';$('estCoin').textContent='--';$('estMar').textContent='--';return;}
+  $('estNot').textContent=Math.round(o.notional).toLocaleString()+'U';
+  $('estCoin').textContent=o.coins.toFixed(4)+' '+SYM.n+'（'+o.sz+'張）';
+  $('estMar').textContent=(o.notional/o.lev).toFixed(1)+'U';
+  const w=$('ordWarn');
+  if(!CREDS){w.textContent='先按⚙設定金鑰';w.hidden=false;}
+  else if(!AVAIL){w.textContent='交易帳戶沒有可用USDT（去OKX劃轉）';w.hidden=false;}
+  else if(!o.ok){w.textContent='數量不足最小單位，拉大倉位%';w.hidden=false;}
+  else w.hidden=true;
+}
+$('lev').oninput=estCalc;$('pct').oninput=estCalc;
+function crow(k,v){return '<div class="crow"><span class="k">'+k+'</span><span>'+v+'</span></div>';}
+$('sendBtn').onclick=()=>{
+  if(!CREDS){showSet(true);return;}
+  const o=calcOrder();
+  if(!o){toast('行情尚未就緒','err');return;}
+  if(!o.ok){toast('數量不足最小單位（拉大倉位%）','err');return;}
+  if(!AVAIL){toast('交易帳戶沒有USDT','err');return;}
+  pend={kind:'open',side:SIDE,o:o};
+  $('cTitle').textContent='確認市價下單';
+  $('cRows').innerHTML=
+    crow('合約',SYM.inst)+
+    crow('方向',SIDE==='long'?'<b style="color:var(--up)">買入做多</b>':'<b style="color:var(--dn)">賣出做空</b>')+
+    crow('數量',o.sz+'張 ≈ '+o.coins.toFixed(4)+' '+SYM.n)+
+    crow('名目 / 保證金',Math.round(o.notional).toLocaleString()+'U / '+(o.notional/o.lev).toFixed(1)+'U')+
+    crow('槓桿 / 模式',o.lev+'x / 全倉');
+  $('okBtn').className='okbtn '+(SIDE==='long'?'long':'short');
+  $('okBtn').textContent='確認送出';
+  $('confirm').classList.add('open');
+};
+$('flatBtn').onclick=()=>{
+  const p=POSMAP[SYM.inst];if(!p)return;
+  pend={kind:'close'};
+  const upl=+p.upl;
+  $('cTitle').textContent='確認市價平倉';
+  $('cRows').innerHTML=crow('合約',SYM.inst)+
+    crow('動作','<b>市價全平</b> '+((+p.pos>0)?'多單':'空單')+' '+Math.abs(+p.pos)+'張')+
+    crow('目前損益','<b style="color:var(--'+(upl>=0?'up':'dn')+')">'+(upl>=0?'+':'')+upl.toFixed(2)+' USDT</b>');
+  $('okBtn').className='okbtn flatc';
+  $('okBtn').textContent='確認平倉';
+  $('confirm').classList.add('open');
+};
+$('cCancel').onclick=()=>$('confirm').classList.remove('open');
+$('okBtn').onclick=async()=>{
+  $('okBtn').disabled=true;
+  try{
+    if(pend.kind==='open'){
+      try{await okxApi('POST','/api/v5/account/set-leverage',
+        {instId:SYM.inst,lever:String(pend.o.lev),mgnMode:'cross'});}catch(e){}
+      const d=await okxApi('POST','/api/v5/trade/order',
+        {instId:SYM.inst,tdMode:'cross',side:pend.side==='long'?'buy':'sell',
+         ordType:'market',sz:pend.o.sz});
+      toast('✓ 已成交送出 單號'+(d[0].ordId||'').slice(-6));
+    }else{
+      await okxApi('POST','/api/v5/trade/close-position',{instId:SYM.inst,mgnMode:'cross'});
+      toast('✓ 已市價平倉');
+    }
+    $('confirm').classList.remove('open');
+    setTimeout(refreshAcct,800);
+  }catch(e){
+    toast('✗ '+e.message,'err');
+  }
+  $('okBtn').disabled=false;
+};
+let toastT=null;
+function toast(t,cls){const el=$('toast');el.textContent=t;el.className='toast '+(cls||'');
+  el.style.display='block';clearTimeout(toastT);
+  toastT=setTimeout(()=>el.style.display='none',3000);}
+
 // ═ 啟動 ═
 reloadAll();
+loadSpecs();
+if(CREDS)initAcct();
 </script></body></html>
