@@ -211,9 +211,11 @@ async function loadTF(tf){
       d.ts.push(t0);d.labels.push(lbl(t0));
       d.ohlc.push([+b[1],+b[4],+b[3],+b[2]]);d.vol.push(+(+b[5]).toFixed(1));}
   }
-  CACHE[k]=d;return d;
+  CACHE[k]=d;barTick=Date.now();return d;
 }
+let barTick=0;   // K棒最後更新時刻(WS或REST); 價格在跳但K棒卡住→REST保底靠這個判斷
 function applyK(tf,k){
+  barTick=Date.now();
   const d=CACHE[ckey(tf)];if(!d)return;
   const t0=k.t/1000;
   const bar=[+k.o,+k.c,+k.l,+k.h],v=+(+k.v).toFixed(1);
@@ -226,17 +228,23 @@ function applyK(tf,k){
 }
 
 // ═══ WebSocket(雙源) ═══
-let WS=null,wsSeq=0,lastMsg=0,okxPing=null,TICK24=null;
+// OKX注意: K線頻道在 business 端點, tickers/trades 在 public 端點 → okx模式開兩條WS
+let WSS=[],wsSeq=0,lastMsg=0,okxPing=null,TICK24=null;
+function closeWS(){WSS.forEach(w=>{try{w.close();}catch(e){}});WSS=[];
+  if(okxPing){clearInterval(okxPing);okxPing=null;}}
 function connectWS(){
   const my=++wsSeq;
-  if(WS){try{WS.close();}catch(e){}WS=null;}
-  if(okxPing){clearInterval(okxPing);okxPing=null;}
+  closeWS();
   const tfs=[...new Set(PANELS.map(p=>p.tf))];
-  let ws;
+  const guard=(ws)=>{
+    ws.onclose=()=>{if(my===wsSeq)setTimeout(()=>{if(my===wsSeq)connectWS();},2000);};
+    ws.onerror=()=>{try{ws.close();}catch(e){}};
+    WSS.push(ws);
+  };
   if(SRC==='bn'){
     const s=SYM.s.toLowerCase();
     const streams=[s+'@aggTrade',s+'@ticker',...tfs.map(t=>s+'@kline_'+tfDef(t).iv)];
-    ws=new WebSocket('wss://fstream.binance.com/stream?streams='+streams.join('/'));
+    const ws=new WebSocket('wss://fstream.binance.com/stream?streams='+streams.join('/'));
     ws.onmessage=(ev)=>{
       if(my!==wsSeq)return;
       lastMsg=Date.now();
@@ -249,37 +257,40 @@ function connectWS(){
         PANELS.forEach(p=>{if(p.tf===t.tf)queueDraw(p);});
       }
     };
+    guard(ws);
   }else{
-    ws=new WebSocket('wss://ws.okx.com:8443/ws/v5/public');
-    ws.onopen=()=>{
-      if(my!==wsSeq)return;
-      const args=[{channel:'tickers',instId:SYM.inst},{channel:'trades',instId:SYM.inst},
-        ...tfs.map(t=>({channel:'candle'+tfDef(t).ob,instId:SYM.inst}))];
-      ws.send(JSON.stringify({op:'subscribe',args:args}));
-      okxPing=setInterval(()=>{try{ws.send('ping');}catch(e){}},20000);
+    const mkOkx=(url,args,handler)=>{
+      const ws=new WebSocket(url);
+      ws.onopen=()=>{if(my!==wsSeq)return;
+        ws.send(JSON.stringify({op:'subscribe',args:args}));};
+      ws.onmessage=(ev)=>{
+        if(my!==wsSeq)return;
+        lastMsg=Date.now();
+        if(ev.data==='pong')return;
+        let m;try{m=JSON.parse(ev.data);}catch(e){return;}
+        if(m.event||!m.arg||!m.data)return;
+        handler(m);
+      };
+      guard(ws);
     };
-    ws.onmessage=(ev)=>{
-      if(my!==wsSeq)return;
-      lastMsg=Date.now();
-      if(ev.data==='pong')return;
-      let m;try{m=JSON.parse(ev.data);}catch(e){return;}
-      if(m.event||!m.arg||!m.data)return;
-      const ch=m.arg.channel;
-      if(ch==='trades'){tickPx(+m.data[0].px);}
-      else if(ch==='tickers'){const t=m.data[0];
-        TICK24={c:+t.last,P:+((+t.last-+t.open24h)/+t.open24h*100).toFixed(2),h:+t.high24h,l:+t.low24h};header();}
-      else if(ch.startsWith('candle')){
-        const t=TFS.find(x=>'candle'+x.ob===ch);if(!t)return;
+    mkOkx('wss://ws.okx.com:8443/ws/v5/public',
+      [{channel:'tickers',instId:SYM.inst},{channel:'trades',instId:SYM.inst}],
+      (m)=>{
+        if(m.arg.channel==='trades'){tickPx(+m.data[0].px);}
+        else{const t=m.data[0];
+          TICK24={c:+t.last,P:+((+t.last-+t.open24h)/+t.open24h*100).toFixed(2),h:+t.high24h,l:+t.low24h};header();}
+      });
+    mkOkx('wss://ws.okx.com:8443/ws/v5/business',
+      tfs.map(t=>({channel:'candle'+tfDef(t).ob,instId:SYM.inst})),
+      (m)=>{
+        const t=TFS.find(x=>'candle'+x.ob===m.arg.channel);if(!t)return;
         const b=m.data[0];
         applyK(t.tf,{t:+b[0],o:b[1],h:b[2],l:b[3],c:b[4],v:b[5]});
         tickPx(+b[4]);
         PANELS.forEach(p=>{if(p.tf===t.tf)queueDraw(p);});
-      }
-    };
+      });
+    okxPing=setInterval(()=>{WSS.forEach(w=>{try{w.send('ping');}catch(e){}});},20000);
   }
-  WS=ws;
-  ws.onclose=()=>{if(my===wsSeq)setTimeout(()=>{if(my===wsSeq)connectWS();},2000);};
-  ws.onerror=()=>{try{ws.close();}catch(e){}};
 }
 // 秒級跳動只改DOM數字, K棒重畫節流400ms
 let lastPx=null;
@@ -329,7 +340,8 @@ const t0Load=Date.now();
 // ═ REST備援輪詢(跟隨當前源) ═
 let bkTick=0;
 setInterval(async()=>{
-  if(lastMsg&&Date.now()-lastMsg<12000)return;
+  // WS訊息新鮮「且」K棒有在動才休息; 只要K棒卡住20秒(即使價格在跳)就REST補
+  if(lastMsg&&Date.now()-lastMsg<12000&&barTick&&Date.now()-barTick<20000)return;
   for(const tf of [...new Set(PANELS.map(p=>p.tf))]){
     try{
       if(SRC==='bn'){
