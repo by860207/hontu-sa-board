@@ -817,11 +817,10 @@ function renderPos(){
     $('flatBtn').style.display='none';return;}
   const sz=+p.pos,long=sz>0;
   $('posRow').classList.add('on');$('flatBtn').style.display='';
+  // 董事長紀律: 不顯示浮動損益, 沒平倉不算獲利。只留方向+張數+進場價+強平價
   $('posTxt').textContent=(long?'多 ':'空 ')+Math.abs(sz)+'張 @'+(+p.avgPx).toLocaleString();
   $('posTxt').style.color=long?'var(--up)':'var(--dn)';
-  const upl=+p.upl;
-  $('posPnl').textContent=(upl>=0?'+':'')+upl.toFixed(2)+'U';
-  $('posPnl').style.color=upl>=0?'var(--up)':'var(--dn)';
+  $('posPnl').textContent='';
   $('posSub').textContent=p.lever+'x'+(p.liqPx?(' 強平'+(+p.liqPx).toLocaleString()):'')
     +(others?(' · 另有'+others+'筆他幣倉'):'');
 }
@@ -881,11 +880,10 @@ $('sendBtn').onclick=()=>{
 $('flatBtn').onclick=()=>{
   const p=POSMAP[SYM.inst];if(!p)return;
   pend={kind:'close'};
-  const upl=+p.upl;
   $('cTitle').textContent='確認市價平倉';
   $('cRows').innerHTML=crow('合約',SYM.inst)+
     crow('動作','<b>市價全平</b> '+((+p.pos>0)?'多單':'空單')+' '+Math.abs(+p.pos)+'張')+
-    crow('目前損益','<b style="color:var(--'+(upl>=0?'up':'dn')+')">'+(upl>=0?'+':'')+upl.toFixed(2)+' USDT</b>');
+    crow('進場價',(+p.avgPx).toLocaleString());
   $('okBtn').className='okbtn flatc';
   $('okBtn').textContent='確認平倉';
   $('confirm').classList.add('open');
