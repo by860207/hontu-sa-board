@@ -668,12 +668,15 @@ if(!CREDS)showSet(true);
 function showSet(on){$('setBody').hidden=!on;$('tradeBody').hidden=on;
   if(on&&CREDS){$('ck').value=CREDS.k;$('cs').value=CREDS.s;$('cp').value=CREDS.p;}}
 $('setBtn').onclick=()=>showSet($('setBody').hidden);
-$('saveCred').onclick=()=>{
-  const k=$('ck').value.trim(),s=$('cs').value.trim(),p=$('cp').value;
+$('saveCred').onclick=async()=>{
+  const k=$('ck').value.trim(),s=$('cs').value.trim(),p=$('cp').value.trim();
   if(!k||!s||!p){toast('三格都要填','err');return;}
   CREDS={k:k,s:s,p:p};
   try{localStorage.setItem('okx_creds',JSON.stringify(CREDS));}catch(e){}
-  showSet(false);toast('金鑰已存到這台裝置');initAcct();
+  toast('驗證中…');
+  await refreshAcct();
+  if(ACCTERR){toast('✗ 金鑰驗證失敗：'+ACCTERR,'err');showSet(true);return;}
+  showSet(false);toast('✓ 金鑰OK，可用 '+AVAIL.toFixed(1)+' USDT');initAcct();
 };
 $('clearCred').onclick=()=>{
   CREDS=null;try{localStorage.removeItem('okx_creds');}catch(e){}
@@ -782,13 +785,15 @@ function ordSymSync(){
     $('levLab').textContent='槓桿（上限'+sp.lever+'x）';}
   renderPos();estCalc();
 }
+let ACCTERR='';
 async function refreshAcct(){
   if(!CREDS)return;
   try{
     const bal=await okxApi('GET','/api/v5/account/balance?ccy=USDT',null);
     const det=bal[0].details;
     AVAIL=det&&det.length?+det[0].availBal:0;
-  }catch(e){}
+    ACCTERR='';
+  }catch(e){ACCTERR=e.message||'連線失敗';}
   try{
     const ps=await okxApi('GET','/api/v5/account/positions?instType=SWAP',null);
     POSMAP={};
@@ -846,6 +851,7 @@ function estCalc(){
   $('estMar').textContent=(o.notional/o.lev).toFixed(1)+'U';
   const w=$('ordWarn');
   if(!CREDS){w.textContent='先按⚙設定金鑰';w.hidden=false;}
+  else if(ACCTERR){w.textContent='金鑰驗證失敗：'+ACCTERR+'（按⚙重新輸入）';w.hidden=false;}
   else if(!AVAIL){w.textContent='交易帳戶沒有可用USDT（去OKX劃轉）';w.hidden=false;}
   else if(!o.ok){w.textContent='數量不足最小單位，拉大倉位%';w.hidden=false;}
   else w.hidden=true;
