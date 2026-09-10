@@ -226,8 +226,45 @@ function applyK(tf,k){
   if(last>=0&&d.ts[last]===t0){d.ohlc[last]=bar;d.vol[last]=v;}
   else if(last<0||t0>d.ts[last]){
     d.ts.push(t0);d.labels.push(lbl(t0));d.ohlc.push(bar);d.vol.push(v);
-    if(d.ts.length>2200){d.ts.shift();d.labels.shift();d.ohlc.shift();d.vol.shift();}
+    if(d.ts.length>30000){d.ts.shift();d.labels.shift();d.ohlc.shift();d.vol.shift();}
   }
+}
+
+// ═ 歷史往回加載: 滑到最左緣/跳至舊時間 → 自動抓更舊K棒接到前面 ═
+const OLDBUSY={},OLDDONE={};
+async function loadOlder(tf){
+  const key=ckey(tf),d=CACHE[key];
+  if(!d||!d.ts.length||OLDBUSY[key]||OLDDONE[key])return 0;
+  OLDBUSY[key]=1;
+  let rows=[];
+  try{
+    if(SRC==='bn'){
+      const end=d.ts[0]*1000-1;
+      const r=await fetch(REST_BN+'?symbol='+SYM.s+'&interval='+tfDef(tf).iv+'&limit=1500&endTime='+end);
+      if(r.ok){for(const b of await r.json())
+        rows.push([b[0]/1000,+b[1],+b[4],+b[3],+b[2],+(+b[5]).toFixed(1)]);}
+    }else{
+      let after=d.ts[0]*1000;
+      for(let pg=0;pg<3;pg++){
+        const r=await fetch(OKX+'/api/v5/market/history-candles?instId='+SYM.inst+'&bar='+tfDef(tf).ob+'&limit=100&after='+after);
+        if(!r.ok)break;
+        const j=await r.json();if(j.code!=='0'||!j.data.length)break;
+        for(const b of j.data)rows.push([+b[0]/1000,+b[1],+b[4],+b[3],+b[2],+(+b[5]).toFixed(1)]);
+        after=j.data[j.data.length-1][0];
+      }
+      rows.sort((x,y)=>x[0]-y[0]);
+    }
+  }catch(e){}
+  rows=rows.filter(x=>x[0]<d.ts[0]);
+  if(!rows.length){OLDDONE[key]=1;OLDBUSY[key]=0;return 0;}
+  d.ts.unshift(...rows.map(x=>x[0]));
+  d.labels.unshift(...rows.map(x=>lbl(x[0])));
+  d.ohlc.unshift(...rows.map(x=>[x[1],x[2],x[3],x[4]]));
+  d.vol.unshift(...rows.map(x=>x[5]));
+  const added=rows.length;
+  PANELS.forEach(p=>{if(p.tf===tf&&p.win&&!p.win.right)p.win.endI+=added;});
+  PANELS.forEach(p=>{if(p.tf===tf)draw(p);});
+  OLDBUSY[key]=0;return added;
 }
 
 // ═══ WebSocket(雙源) ═══
@@ -316,7 +353,7 @@ function tickPx(p){
       }
     }else if(t0>d.ts[li]){
       d.ts.push(t0);d.labels.push(lbl(t0));d.ohlc.push([p,p,p,p]);d.vol.push(0);
-      if(d.ts.length>2200){d.ts.shift();d.labels.shift();d.ohlc.shift();d.vol.shift();}
+      if(d.ts.length>30000){d.ts.shift();d.labels.shift();d.ohlc.shift();d.vol.shift();}
       PANELS.forEach(pp=>{if(pp.tf===tf)queueDraw(pp);});
     }
   }
@@ -452,6 +489,7 @@ PANELS.forEach((p,i)=>{
     if(o.startValue!=null&&o.endValue!=null){s=o.startValue;e2=o.endValue;}
     else{s=Math.round((o.start||0)/100*(n-1));e2=Math.round((o.end==null?100:o.end)/100*(n-1));}
     p.win={size:Math.max(5,e2-s+1),right:e2>=n-2,endI:e2};
+    if(s<=1)loadOlder(p.tf);   // 滑到最左緣→自動往回加載更舊歷史
   });
   bar.querySelectorAll('.tfbtn').forEach(b=>b.onclick=async()=>{
     p.tf=+b.dataset.tf;p.win=null;save();
@@ -465,12 +503,14 @@ PANELS.forEach((p,i)=>{
   });
   bar.querySelector('input[data-volh]').oninput=(e)=>{p.volh=+e.target.value;save();draw(p);};
 });
-function doJump(){
+async function doJump(){
   const inp=document.getElementById('jump');
   const t=parseJump(inp.value);
   if(t==null){inp.style.borderColor='#ef5350';setTimeout(()=>inp.style.borderColor='#2a2a2a',900);return;}
-  PANELS.forEach(p=>{
-    const d=CACHE[ckey(p.tf)];if(!d||!d.ts.length)return;
+  for(const p of PANELS){
+    let d=CACHE[ckey(p.tf)];if(!d||!d.ts.length)continue;
+    for(let k=0;k<15&&t<d.ts[0];k++){if(!await loadOlder(p.tf))break;}
+    d=CACHE[ckey(p.tf)];if(!d||!d.ts.length)continue;
     const b=Math.floor(t/(p.tf*60))*(p.tf*60);
     let lo=0,hi=d.ts.length-1;
     while(lo<hi){const mid=(lo+hi)>>1;if(d.ts[mid]<b)lo=mid+1;else hi=mid;}
@@ -479,7 +519,7 @@ function doJump(){
     const win=p.tf===1?120:80;
     p.win={size:win,right:false,endI:Math.min(d.ts.length-1,idx+(win>>1))};
     draw(p);
-  });
+  }
   inp.blur();
 }
 document.getElementById('jumpBtn').onclick=doJump;
