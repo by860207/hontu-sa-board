@@ -25,6 +25,7 @@
 <div class="hdr">
   <span class="px" id="px">--</span><span class="s" id="sess"></span>
   <span class="s">本節均價線 <span id="vw">--</span>（<span id="dv">--</span>）</span>
+  <span class="s" id="imp" style="color:#ffe600"></span>
   <span class="s" id="ts">載入中…</span>
   <span style="display:flex;gap:4px;align-items:center">
     <input id="jump" placeholder="09021005" inputmode="numeric" style="width:110px;background:#1a1a1a;color:var(--ink);border:1px solid #2a2a2a;border-radius:5px;padding:3px 6px;font-size:13px;font-family:inherit">
@@ -378,7 +379,7 @@ function header(){
   el('px').className='px '+(s.chg_vs_vwap>=0?'up':'dn');
   el('sess').textContent=s.sess;
   const age=LIVE?(Date.now()/1000-new Date(LIVE.t.replace(' ','T')).getTime()/1000):9e9;
-  el('ts').textContent=(LIVE?LIVE.t:'')+(age>300?' ⚠資料延遲':'')+(TUN?' ⚡秒級':' · 雲端60秒')+' · v12';
+  el('ts').textContent=(LIVE?LIVE.t:'')+(age>300?' ⚠資料延遲':'')+(TUN?' ⚡秒級':' · 雲端60秒')+' · v13';
   el('vw').textContent=s.vwap_now!=null?s.vwap_now.toLocaleString():'--';
   el('dv').textContent=s.chg_vs_vwap==null?'--':((s.chg_vs_vwap>=0?'+':'')+s.chg_vs_vwap+'點');
 }
@@ -391,7 +392,7 @@ function gotLive(j){
   // 發現/更新隧道網址(家裡電腦廣播的秒級通道)
   if(j&&j.tun&&j.tun!==TUN){TUN=j.tun;tunFail=0;
     if(!tunTimer)tunTimer=setInterval(tunnelTick,2000);
-    tunnelTick();}
+    tunnelTick();impTick();}
   if(TUN){return;}                    // 秒級模式中: 雲端資料較舊, 只取tun不覆蓋
   LIVE=j;mergeBars();PANELS.forEach(draw);header();
 }
@@ -422,11 +423,26 @@ async function tunnelTick(){
     if(++tunFail>=5){TUN=null;}   // 隧道死了→退回雲端60秒; live.json帶回新網址會自動歸隊
   }
 }
+// ═ 結算座標儀表: 隱含結算K+C−P(選擇權市場定價的結算位, 30秒/次, 隧道模式限定) ═
+// 期貨在跌但這個數字不跌=基差假動作; 詳見 08_策略庫\結算日尾盤選擇權SOP_20260911.txt
+async function impTick(){
+  const el=document.getElementById('imp');
+  if(!TUN){el.textContent='';return;}
+  try{
+    const r=await fetch(TUN+'/imp',{signal:AbortSignal.timeout(4000)});
+    const j=await r.json();
+    if(j&&j.imp&&j.age<180){
+      el.textContent='結算座標 '+Math.round(j.imp).toLocaleString()
+        +'｜'+(j.basis>=0?'逆':'正')+'價差'+Math.abs(Math.round(j.basis))+'點';
+      el.title='K+C−P中位數 '+j.n+'檔 序列'+j.exp+' @'+j.t;
+    }else el.textContent='';
+  }catch(e){el.textContent='';}
+}
 async function loadFills(){
   try{const r=await fetch(RAW+'fills.json?ts='+Math.floor(Date.now()/300000));
     if(r.ok){FILLS=await r.json();PANELS.forEach(draw);}}catch(e){}
 }
-loadHist();loadLive();loadFills();
+loadHist();loadLive();loadFills();setInterval(impTick,30000);
 setInterval(loadLive,30000);
 setInterval(loadHist,1800000);
 setInterval(loadFills,1800000);
