@@ -234,6 +234,8 @@ PANELS.forEach((p,i)=>{
     if(o.startValue!=null&&o.endValue!=null){s=o.startValue;e2=o.endValue;}
     else{s=Math.round((o.start||0)/100*(n-1));e2=Math.round((o.end==null?100:o.end)/100*(n-1));}
     p.win={size:Math.max(5,e2-s+1),right:e2>=n-2,endI:e2};
+    p.maVals=maValsAt(p,d,Math.min(e2,d.ohlc.length-1));   // 圖例帶值跟著畫面右緣
+    p.chart.setOption({legend:{formatter:legFmt(p)}});
   });
   bar.querySelectorAll('.tfbtn').forEach(b=>b.onclick=()=>{
     p.tf=+b.dataset.tf;p.win=null;save();
@@ -365,6 +367,23 @@ function sma(a,n){const r=Array(a.length).fill(null);if(!n||n<1)return r;
   let s=0;for(let i=0;i<a.length;i++){s+=a[i];if(i>=n)s-=a[i-n];
     if(i>=n-1)r[i]=+(s/n).toFixed(1);}return r;}
 
+// ═ 圖例帶值: 圖頂那排均線名字後面直接顯示「畫面右緣K棒」的均線值 (2026-09-13 董事長命題) ═
+// 看盤=最新K的值; 回放/拖到歷史位置=該時點的值(datazoom時重算)
+function maValsAt(p,d,endI){
+  const o={};
+  for(const m of p.ma){
+    if(!m)continue;
+    if(endI>=m-1){let s=0;for(let i=endI-m+1;i<=endI;i++)s+=d.ohlc[i][1];
+      o['MA'+m]=+(s/m).toFixed(1);}
+    else o['MA'+m]=null;
+  }
+  return o;
+}
+function legFmt(p){return function(name){
+  const v=p.maVals?p.maVals[name]:null;
+  return name.replace('MA','M')+(v!=null?' '+v.toLocaleString():'');
+};}
+
 function draw(p){
   const d=getTF(p.tf);if(!d)return;
   const closes=d.ohlc.map(v=>v[1]);
@@ -373,6 +392,7 @@ function draw(p){
   if(p.win){endI=p.win.right?n-1:Math.min(p.win.endI,n-1);
     startI=Math.max(0,endI-p.win.size+1);}
   else{endI=n-1;startI=Math.max(0,n-show);}
+  p.maVals=maValsAt(p,d,endI);
   const maSeries=p.ma.map((m,j)=>({name:m?('MA'+m):('ma'+j+'off'),type:'line',
     data:m?sma(closes,m):[],connectNulls:false,symbol:'none',
     lineStyle:{width:1.4,color:MACOLOR[j]},itemStyle:{color:MACOLOR[j]},
@@ -393,9 +413,10 @@ function draw(p){
         if(mas.length)out+=mas.join(' ');
         return out;}},
     axisPointer:{link:[{xAxisIndex:'all'}]},
-    legend:{top:0,right:8,textStyle:{color:C.ink2,fontSize:11},itemWidth:14,
+    legend:{top:0,left:54,right:4,textStyle:{color:C.ink2,fontSize:10},itemWidth:9,itemGap:5,
+      formatter:legFmt(p),
       data:maSeries.filter((s,j)=>p.ma[j]).map(s=>s.name)},
-    grid:[{left:54,right:12,top:22,bottom:(p.volh+13)+'%'},
+    grid:[{left:54,right:12,top:26,bottom:(p.volh+13)+'%'},
           {left:54,right:12,bottom:'7%',height:p.volh+'%'}],
     xAxis:[{type:'category',data:d.labels,gridIndex:0,axisLine:{lineStyle:{color:'#2a2a2a'}},
             axisLabel:{color:C.ink2,fontSize:10},axisTick:{show:false}},
@@ -463,7 +484,7 @@ function header(){
   el('px').className='px '+(s.chg_vs_vwap>=0?'up':'dn');
   el('sess').textContent=s.sess;
   const age=LIVE?(Date.now()/1000-new Date(LIVE.t.replace(' ','T')).getTime()/1000):9e9;
-  el('ts').textContent=(LIVE?LIVE.t:'')+(age>300?' ⚠資料延遲':'')+(TUN?' ⚡秒級':' · 雲端60秒')+' · v15';
+  el('ts').textContent=(LIVE?LIVE.t:'')+(age>300?' ⚠資料延遲':'')+(TUN?' ⚡秒級':' · 雲端60秒')+' · v16';
   el('vw').textContent=s.vwap_now!=null?s.vwap_now.toLocaleString():'--';
   el('dv').textContent=s.chg_vs_vwap==null?'--':((s.chg_vs_vwap>=0?'+':'')+s.chg_vs_vwap+'點');
 }
@@ -516,9 +537,15 @@ async function impTick(){
     const r=await fetch(TUN+'/imp',{signal:AbortSignal.timeout(4000)});
     const j=await r.json();
     if(j&&j.imp&&j.age<180){
-      el.textContent='結算座標 '+Math.round(j.imp).toLocaleString()
+      let tx='結算座標 '+Math.round(j.imp).toLocaleString()
         +'｜'+(j.basis>=0?'逆':'正')+'價差'+Math.abs(Math.round(j.basis))+'點';
-      el.title='K+C−P中位數 '+j.n+'檔 序列'+j.exp+' @'+j.t;
+      if(j.rate!=null){                        // 傳導率: 10分鐘腿Δ隱含/Δ期貨(期貨動≥15點才有)
+        const pc=Math.round(j.rate*100);
+        tx+='｜傳導'+pc+'%'+(pc>=70?'真':pc<30?'假':'灰');
+      }
+      el.textContent=tx;
+      el.title='K+C−P中位數 '+j.n+'檔 序列'+j.exp+' @'+j.t
+        +(j.leg_t?('｜腿起點'+j.leg_t+' Δ期'+j.dfut+' Δ隱'+j.dimp):'');
     }else el.textContent='';
   }catch(e){el.textContent='';}
 }
