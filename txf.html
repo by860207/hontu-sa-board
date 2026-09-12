@@ -21,6 +21,16 @@
   .bar input[type=range]{width:70px;accent-color:var(--acc)}
   .chart{width:100%}
   .up{color:var(--up)}.dn{color:var(--dn)}
+  #sigPanel{display:none;position:fixed;right:8px;z-index:99;background:#101010;
+    border:1px solid #2a2a2a;border-radius:8px;max-height:62vh;overflow-y:auto;min-width:235px;
+    box-shadow:0 4px 18px rgba(0,0,0,.6)}
+  #sigPanel .sighd{position:sticky;top:0;background:#181818;padding:6px 10px;font-size:12px;
+    color:var(--ink2);display:flex;gap:5px;align-items:center;border-bottom:1px solid #2a2a2a}
+  #sigPanel .sighd input{width:46px;background:#1a1a1a;color:var(--ink);border:1px solid #2a2a2a;
+    border-radius:4px;padding:1px 3px;font-size:12px;font-family:inherit}
+  .sigitem{padding:5px 12px;font-size:13px;cursor:pointer;border-bottom:1px solid #1a1a1a;
+    font-variant-numeric:tabular-nums}
+  .sigitem:active,.sigitem:hover{background:#1c2a33}
 </style></head><body>
 <div class="hdr">
   <span class="px" id="px">--</span><span class="s" id="sess"></span>
@@ -30,9 +40,11 @@
   <span style="display:flex;gap:4px;align-items:center">
     <input id="jump" placeholder="09021005" inputmode="numeric" style="width:110px;background:#1a1a1a;color:var(--ink);border:1px solid #2a2a2a;border-radius:5px;padding:3px 6px;font-size:13px;font-family:inherit">
     <button id="jumpBtn" class="tfbtn" style="padding:3px 10px">跳至</button>
+    <button id="sigBtn" class="tfbtn" style="padding:3px 10px;color:#ffe600;border-color:#4a4520">訊號</button>
   </span>
   <a href="index.html">← 訊號看板</a>
 </div>
+<div id="sigPanel"></div>
 <div id="panels"></div>
 <script>
 const RAW='https://raw.githubusercontent.com/by860207/hontu-sa-board/live/';
@@ -121,26 +133,86 @@ function parseJump(s){
   if(m)return new Date(now.getFullYear(),now.getMonth(),now.getDate(),+m[1],+m[2]).getTime()/1000;
   return null;
 }
+function findBar(d,b){                           // 二分找最接近b(unix秒)的K棒index
+  let lo=0,hi=d.ts.length-1;
+  while(lo<hi){const mid=(lo+hi)>>1;if(d.ts[mid]<b)lo=mid+1;else hi=mid;}
+  if(lo>0&&Math.abs(d.ts[lo-1]-b)<Math.abs(d.ts[lo]-b))lo--;
+  return lo;
+}
+function jumpTo(t,winOf){                        // 兩張圖同時跳到時間t, winOf(p)=顯示根數
+  PANELS.forEach(p=>{
+    const d=getTF(p.tf);if(!d||!d.ts.length)return;
+    const idx=findBar(d,Math.floor(t/(p.tf*60))*(p.tf*60));
+    const win=winOf(p);
+    p.win={size:win,right:false,endI:Math.min(d.ts.length-1,idx+(win>>1))};
+    draw(p);
+  });
+}
 function doJump(){
   const inp=document.getElementById('jump');
   const t=parseJump(inp.value);
   if(t==null){inp.style.borderColor='#ff3333';setTimeout(()=>inp.style.borderColor='#2a2a2a',900);return;}
-  PANELS.forEach(p=>{
-    const d=getTF(p.tf);if(!d||!d.ts.length)return;
-    const b=Math.floor(t/(p.tf*60))*(p.tf*60);
-    let idx=d.ts.length-1;                       // 二分找最接近的K
-    let lo=0,hi=d.ts.length-1;
-    while(lo<hi){const mid=(lo+hi)>>1;if(d.ts[mid]<b)lo=mid+1;else hi=mid;}
-    idx=lo;
-    if(idx>0&&Math.abs(d.ts[idx-1]-b)<Math.abs(d.ts[idx]-b))idx--;
-    const win=p.tf===1?120:80;                   // 跳過去後顯示的視窗寬
-    p.win={size:win,right:false,endI:Math.min(d.ts.length-1,idx+(win>>1))};
-    draw(p);
-  });
+  jumpTo(t,p=>p.tf===1?120:80);                  // 跳過去後顯示的視窗寬
   inp.blur();
 }
 document.getElementById('jumpBtn').onclick=doJump;
 document.getElementById('jump').addEventListener('keydown',e=>{if(e.key==='Enter')doJump();});
+
+// ═ MA200觸線訊號回放 (2026-09-12 董事長命題) ═
+// 訊號: 1分K低~高包住MA200(與圖上MA200同一條:全K連續SMA200); 訊號後cool根內觸線不算新訊號
+const SIG={cool:+(localStorage.getItem('txf_sigcool')||120),mark:null,list:[]};
+function scanSignals(){
+  const d=getTF(1);
+  if(!d||d.ohlc.length<220)return[];
+  const closes=d.ohlc.map(v=>v[1]);
+  const ma=sma(closes,200);
+  const from=Date.now()/1000-30*86400;
+  const out=[];let lastI=-1e9;
+  for(let i=0;i<closes.length;i++){
+    if(ma[i]==null)continue;
+    const o=d.ohlc[i];                           // [開,收,低,高]
+    if(o[2]<=ma[i]&&ma[i]<=o[3]&&i-lastI>=SIG.cool){
+      lastI=i;                                   // 冷卻內的觸線不計也不延長冷卻
+      if(d.ts[i]>=from)out.push({t:d.ts[i],px:o[1],dir:i>0&&closes[i-1]>=ma[i]?1:-1});
+    }
+  }
+  return out.reverse();                          // 新→舊
+}
+function renderSigPanel(){
+  const el=document.getElementById('sigPanel');
+  SIG.list=scanSignals();
+  el.innerHTML='<div class="sighd">近一月MA200觸線 '+SIG.list.length+'次｜冷卻'
+    +'<input id="sigCool" type="number" min="10" max="500" value="'+SIG.cool+'">根'
+    +'<span id="sigX" style="margin-left:auto;cursor:pointer;padding:0 5px">✕</span></div>'
+    +(SIG.list.length?SIG.list.map((s,i)=>'<div class="sigitem" data-i="'+i+'">'
+      +lbl(s.t)+'｜'+s.px.toLocaleString()
+      +'｜<span style="color:'+(s.dir>0?'#ff3333':'#00c853')+'">'+(s.dir>0?'上踩':'下碰')+'</span></div>').join('')
+     :'<div class="sigitem" style="cursor:default;color:#9aa0a6">資料不足或無訊號</div>');
+  el.querySelector('#sigX').onclick=()=>{el.style.display='none';};
+  el.querySelector('#sigCool').onchange=e=>{
+    SIG.cool=Math.max(10,+e.target.value||120);
+    try{localStorage.setItem('txf_sigcool',SIG.cool);}catch(_){}
+    renderSigPanel();};
+  el.querySelectorAll('.sigitem[data-i]').forEach(it=>it.onclick=()=>{
+    sigJump(SIG.list[+it.dataset.i].t);
+    el.style.display='none';});
+}
+document.getElementById('sigBtn').onclick=()=>{
+  const el=document.getElementById('sigPanel');
+  if(el.style.display==='block'){el.style.display='none';return;}
+  el.style.top=(document.querySelector('.hdr').offsetHeight+6)+'px';
+  renderSigPanel();el.style.display='block';
+};
+function sigJump(t){
+  SIG.mark=t;                                    // 圖上插黃色「訊」標記
+  const want=[1,5];                              // 點訊號→上圖1分/下圖5分
+  PANELS.forEach((p,i)=>{
+    if(p.tf!==want[i]){p.tf=want[i];p.win=null;p.chart.clear();
+      p.bar.querySelectorAll('.tfbtn').forEach(x=>x.classList.toggle('on',+x.dataset.tf===p.tf));}
+  });
+  save();
+  jumpTo(t,()=>120);                             // 兩張圖固定120根、訊號K置中, 之後可自由拖動
+}
 
 // ═ UI ═
 const root=document.getElementById('panels');
@@ -151,7 +223,7 @@ PANELS.forEach((p,i)=>{
     +'<label>量高</label><input type="range" min="6" max="26" value="'+p.volh+'" data-volh>';
   const div=document.createElement('div');div.className='chart';div.id='ch'+i;
   root.appendChild(bar);root.appendChild(div);
-  p.chart=echarts.init(div);p.win=null;
+  p.chart=echarts.init(div);p.win=null;p.bar=bar;
   // 記錄目前視窗(根數+是否貼右緣); 刷新時原樣還原, 不會自己跳回全部K
   p.chart.on('datazoom',()=>{
     const d=CACHE[p.tf];if(!d)return;
@@ -356,6 +428,17 @@ function draw(p){
              label:{show:true,formatter:isB?'B':'S',position:isB?'bottom':'top',
                     fontSize:9,fontWeight:700,color:isB?'#29b6f6':'#f0b429'}});
          }
+         if(SIG.mark){                            // MA200訊號回放: 被選中的訊號K插黃標
+           const b2=Math.floor(SIG.mark/(p.tf*60))*(p.tf*60);
+           let lo=0,hi=d.ts.length-1,ix=-1;
+           while(lo<=hi){const mid=(lo+hi)>>1;
+             if(d.ts[mid]===b2){ix=mid;break;}
+             if(d.ts[mid]<b2)lo=mid+1;else hi=mid-1;}
+           if(ix>=0)pts.push({coord:[ix,d.ohlc[ix][3]],name:'MA200觸線訊號 '+d.labels[ix],
+             symbol:'pin',symbolSize:16,symbolOffset:[0,-9],
+             itemStyle:{color:'#ffe600'},
+             label:{show:true,formatter:'訊',fontSize:8,color:'#000',fontWeight:700}});
+         }
          return pts;})(),
          tooltip:{trigger:'item',formatter:(q)=>q.name}},
        markLine:(p.cross&&p.closeVal!=null)?{silent:true,symbol:'none',animation:false,
@@ -379,7 +462,7 @@ function header(){
   el('px').className='px '+(s.chg_vs_vwap>=0?'up':'dn');
   el('sess').textContent=s.sess;
   const age=LIVE?(Date.now()/1000-new Date(LIVE.t.replace(' ','T')).getTime()/1000):9e9;
-  el('ts').textContent=(LIVE?LIVE.t:'')+(age>300?' ⚠資料延遲':'')+(TUN?' ⚡秒級':' · 雲端60秒')+' · v13';
+  el('ts').textContent=(LIVE?LIVE.t:'')+(age>300?' ⚠資料延遲':'')+(TUN?' ⚡秒級':' · 雲端60秒')+' · v14';
   el('vw').textContent=s.vwap_now!=null?s.vwap_now.toLocaleString():'--';
   el('dv').textContent=s.chg_vs_vwap==null?'--':((s.chg_vs_vwap>=0?'+':'')+s.chg_vs_vwap+'點');
 }
