@@ -160,7 +160,8 @@ document.getElementById('jump').addEventListener('keydown',e=>{if(e.key==='Enter
 
 // ═ MA200觸線訊號回放 (2026-09-12 董事長命題) ═
 // 訊號: 1分K低~高包住MA200(與圖上MA200同一條:全K連續SMA200); 訊號後cool根內觸線不算新訊號
-const SIG={cool:+(localStorage.getItem('txf_sigcool')||120),mark:null,list:[]};
+// cool同時=跳轉後兩張圖的視窗根數(董事長定義:冷卻=畫面根數, 一個數字管兩件事)
+const SIG={cool:+(localStorage.getItem('txf_sigcool')||100),mark:null,list:[]};
 function scanSignals(){
   const d=getTF(1);
   if(!d||d.ohlc.length<220)return[];
@@ -181,7 +182,7 @@ function scanSignals(){
 function renderSigPanel(){
   const el=document.getElementById('sigPanel');
   SIG.list=scanSignals();
-  el.innerHTML='<div class="sighd">近一月MA200觸線 '+SIG.list.length+'次｜冷卻'
+  el.innerHTML='<div class="sighd">近一月MA200觸線 '+SIG.list.length+'次｜視窗/冷卻'
     +'<input id="sigCool" type="number" min="10" max="500" value="'+SIG.cool+'">根'
     +'<span id="sigX" style="margin-left:auto;cursor:pointer;padding:0 5px">✕</span></div>'
     +(SIG.list.length?SIG.list.map((s,i)=>'<div class="sigitem" data-i="'+i+'">'
@@ -190,7 +191,7 @@ function renderSigPanel(){
      :'<div class="sigitem" style="cursor:default;color:#9aa0a6">資料不足或無訊號</div>');
   el.querySelector('#sigX').onclick=()=>{el.style.display='none';};
   el.querySelector('#sigCool').onchange=e=>{
-    SIG.cool=Math.max(10,+e.target.value||120);
+    SIG.cool=Math.max(10,+e.target.value||100);
     try{localStorage.setItem('txf_sigcool',SIG.cool);}catch(_){}
     renderSigPanel();};
   el.querySelectorAll('.sigitem[data-i]').forEach(it=>it.onclick=()=>{
@@ -211,7 +212,7 @@ function sigJump(t){
       p.bar.querySelectorAll('.tfbtn').forEach(x=>x.classList.toggle('on',+x.dataset.tf===p.tf));}
   });
   save();
-  jumpTo(t,()=>120);                             // 兩張圖固定120根、訊號K置中, 之後可自由拖動
+  jumpTo(t,()=>SIG.cool);                        // 兩張圖視窗=冷卻根數、訊號K置中, 之後可自由拖動
 }
 
 // ═ UI ═
@@ -462,7 +463,7 @@ function header(){
   el('px').className='px '+(s.chg_vs_vwap>=0?'up':'dn');
   el('sess').textContent=s.sess;
   const age=LIVE?(Date.now()/1000-new Date(LIVE.t.replace(' ','T')).getTime()/1000):9e9;
-  el('ts').textContent=(LIVE?LIVE.t:'')+(age>300?' ⚠資料延遲':'')+(TUN?' ⚡秒級':' · 雲端60秒')+' · v14';
+  el('ts').textContent=(LIVE?LIVE.t:'')+(age>300?' ⚠資料延遲':'')+(TUN?' ⚡秒級':' · 雲端60秒')+' · v15';
   el('vw').textContent=s.vwap_now!=null?s.vwap_now.toLocaleString():'--';
   el('dv').textContent=s.chg_vs_vwap==null?'--':((s.chg_vs_vwap>=0?'+':'')+s.chg_vs_vwap+'點');
 }
