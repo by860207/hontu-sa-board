@@ -1,0 +1,250 @@
+<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8">
+<title>選擇權模擬下單</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  :root{--bg:#000;--panel:#101010;--ink:#f2f2f2;--ink2:#9aa0a6;--up:#ff3333;--dn:#00c853;--acc:#29b6f6;--yel:#ffe600}
+  *{box-sizing:border-box;margin:0}
+  body{background:var(--bg);color:var(--ink);font:13px/1.45 "Segoe UI","Microsoft JhengHei",sans-serif;padding:6px;padding-bottom:40px}
+  .hdr{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;padding:2px 6px 6px}
+  .hdr b{font-size:16px}
+  .hdr .s{font-size:12px;color:var(--ink2)}
+  .hdr a{color:var(--acc);font-size:12px;text-decoration:none;margin-left:auto}
+  table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}
+  .tq td,.tq th{padding:3px 2px;text-align:center;font-size:13px;border-bottom:1px solid #161616}
+  .tq th{color:var(--ink2);font-size:11px;font-weight:400}
+  .tq .k{color:var(--yel);font-weight:700;background:#0d0d0d}
+  .tq .atm td{border-top:1px dashed #555}
+  .cell{cursor:pointer;border-radius:4px}
+  .cell:active{background:#1c2a33}
+  .sel{outline:1px solid var(--acc);border-radius:4px}
+  .bidpx{color:var(--up)} .askpx{color:var(--dn)}
+  .box{background:var(--panel);border:1px solid #222;border-radius:8px;padding:8px;margin-top:8px}
+  .lad{width:100%}
+  .lad td{padding:2px 6px;font-size:13px;text-align:center}
+  .lad .q{color:var(--ink2);font-size:12px}
+  .lad .px{cursor:pointer;border-radius:4px}
+  .lad .px:active{background:#1c2a33}
+  .tk{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:8px}
+  .tk button,.tabs button,.mini{background:#1a1a1a;color:var(--ink);border:1px solid #2a2a2a;border-radius:6px;padding:6px 12px;font-size:13px;font-family:inherit;cursor:pointer}
+  .tk .on{border-color:var(--acc);color:var(--acc);font-weight:700}
+  .tk input{width:70px;background:#1a1a1a;color:var(--ink);border:1px solid #2a2a2a;border-radius:6px;padding:6px;font-size:14px;font-family:inherit;text-align:center}
+  .go{flex:1;min-width:110px;font-weight:700;font-size:15px;padding:9px 0;border:none;border-radius:8px;color:#fff}
+  .goB{background:#b71c1c}.goS{background:#1b5e20}
+  .tabs{display:flex;gap:5px;margin-top:10px}
+  .tabs .on{background:var(--acc);color:#000;font-weight:700}
+  .lst{margin-top:6px}
+  .lst .row{display:flex;gap:8px;align-items:center;padding:5px 6px;border-bottom:1px solid #161616;font-size:13px;font-variant-numeric:tabular-nums}
+  .lst .row .g{color:var(--ink2)}
+  .mini{padding:3px 10px;font-size:12px}
+  .warn{color:#ff8a5c;font-size:12px;padding:4px 6px}
+  .ok{color:var(--dn)} .bad{color:var(--up)}
+  #msg{position:fixed;left:50%;bottom:50px;transform:translateX(-50%);background:#222;border:1px solid #444;border-radius:8px;padding:8px 16px;display:none;z-index:9;font-size:14px}
+</style></head><body>
+<div class="hdr">
+  <b>選擇權模擬倉</b>
+  <span class="s" id="exp">--</span>
+  <span class="s">期貨 <span id="fut">--</span></span>
+  <span class="s" id="st">連線中…</span>
+  <a href="txf.html">← 台指走勢</a>
+</div>
+<div class="warn" id="warn" style="display:none"></div>
+<table class="tq" id="tq"></table>
+<div class="box" id="detail" style="display:none">
+  <div style="display:flex;gap:10px;align-items:baseline">
+    <b id="dname">--</b><span class="s" id="dlast"></span>
+    <span class="s" style="margin-left:auto;cursor:pointer" onclick="document.getElementById('detail').style.display='none'">✕</span>
+  </div>
+  <table class="lad" id="lad"></table>
+  <div class="tk">
+    <button id="sB" class="on" onclick="setSide('B')">買進</button>
+    <button id="sS" onclick="setSide('S')">賣出</button>
+    <button id="tL" class="on" onclick="setType('LMT')">限價</button>
+    <button id="tM" onclick="setType('MKT')">市價</button>
+    <input id="px" inputmode="decimal" placeholder="價格">
+    <button class="mini" onclick="qq(-1)">−</button>
+    <input id="qty" inputmode="numeric" value="1" style="width:44px">
+    <button class="mini" onclick="qq(1)">＋</button>
+  </div>
+  <div class="tk">
+    <button class="go goB" id="go" onclick="submitOrder()">買進送出</button>
+  </div>
+</div>
+<div class="tabs">
+  <button class="on" data-t="w" onclick="tab('w')">委託</button>
+  <button data-t="f" onclick="tab('f')">成交</button>
+  <button data-t="p" onclick="tab('p')">持倉</button>
+  <button data-t="r" onclick="tab('r')">已實現</button>
+</div>
+<div class="lst" id="lst"></div>
+<div id="msg"></div>
+<script>
+const RAW='https://raw.githubusercontent.com/by860207/hontu-sa-board/live/';
+let TUN=null,BOOK=null,PAPER=null,SELK=null,SELCP=null,SIDE='B',TYPE='LMT',TAB='w';
+function pad(n){return(n<10?'0':'')+n}
+function msg(t,bad){const m=document.getElementById('msg');m.textContent=t;
+  m.style.borderColor=bad?'#ff3333':'#2e7d32';m.style.display='block';
+  clearTimeout(m._t);m._t=setTimeout(()=>m.style.display='none',2500);}
+async function findTun(){
+  const base=Date.now()-15000;
+  for(let k=0;k<5;k++){
+    const d=new Date(base-k*60000);
+    try{const r=await fetch(RAW+'live_'+pad(d.getHours())+pad(d.getMinutes())+'.json');
+      if(r.ok){const j=await r.json();if(j.tun){TUN=j.tun;return;}}}catch(e){}
+  }
+  try{const r=await fetch(RAW+'live.json?ts='+Date.now());
+    if(r.ok){const j=await r.json();if(j.tun)TUN=j.tun;}}catch(e){}
+}
+async function bookTick(){
+  if(!TUN){await findTun();}
+  if(!TUN){setSt('找不到隧道');return;}
+  try{
+    const r=await fetch(TUN+'/optbook',{signal:AbortSignal.timeout(4000)});
+    const j=await r.json();
+    if(j&&j.rows){BOOK=j;render();}
+    setSt(j&&j.age<=10?'⚡即時':(j&&j.age!=null?('延遲'+j.age+'秒'):'無五檔資料'));
+  }catch(e){setSt('隧道斷線,重連中');TUN=null;}
+}
+async function paperTick(){
+  if(!TUN)return;
+  try{
+    const r=await fetch(TUN+'/paper',{signal:AbortSignal.timeout(4000)});
+    PAPER=await r.json();renderList();
+  }catch(e){}
+}
+function setSt(t){document.getElementById('st').textContent=t;
+  const w=document.getElementById('warn');
+  const bad=!BOOK||BOOK.age>15;
+  w.style.display=bad?'block':'none';
+  if(bad)w.textContent='⚠ 五檔非即時（需盤中+家裡餵送器運行），僅能瀏覽不能下單';}
+function fmt(v){return v==null?'--':(+v).toLocaleString()}
+function render(){
+  if(!BOOK)return;
+  document.getElementById('exp').textContent='序列 '+BOOK.exp;
+  document.getElementById('fut').textContent=fmt(BOOK.fut);
+  const m={};for(const r of BOOK.rows)m[r.cp+r.k]=r;
+  const ks=[...new Set(BOOK.rows.map(r=>r.k))].sort((a,b)=>b-a);
+  let h='<tr><th>C買</th><th>C賣</th><th>履約價</th><th>P買</th><th>P賣</th></tr>';
+  for(const k of ks){
+    const c=m['C'+k],p=m['P'+k];
+    const sel=(cp)=>SELK===k&&SELCP===cp?' sel':'';
+    h+='<tr'+(k===BOOK.atm?' class="atm"':'')+'>'
+      +'<td class="cell bidpx'+sel('C')+'" onclick="pick('+k+',\'C\')">'+(c?fmt(c.bp[0]):'--')+'</td>'
+      +'<td class="cell askpx'+sel('C')+'" onclick="pick('+k+',\'C\')">'+(c?fmt(c.sp[0]):'--')+'</td>'
+      +'<td class="k">'+k+'</td>'
+      +'<td class="cell bidpx'+sel('P')+'" onclick="pick('+k+',\'P\')">'+(p?fmt(p.bp[0]):'--')+'</td>'
+      +'<td class="cell askpx'+sel('P')+'" onclick="pick('+k+',\'P\')">'+(p?fmt(p.sp[0]):'--')+'</td></tr>';
+  }
+  document.getElementById('tq').innerHTML=h;
+  if(SELK!=null)renderDetail();
+}
+function pick(k,cp){SELK=k;SELCP=cp;
+  document.getElementById('detail').style.display='block';
+  const row=BOOK.rows.find(r=>r.k===k&&r.cp===cp);
+  const px=document.getElementById('px');
+  if(row&&!px.value)px.value=SIDE==='B'?(row.sp[0]||''):(row.bp[0]||'');
+  renderDetail();render();
+  document.getElementById('detail').scrollIntoView({behavior:'smooth'});}
+function renderDetail(){
+  const row=BOOK&&BOOK.rows.find(r=>r.k===SELK&&r.cp===SELCP);
+  if(!row)return;
+  document.getElementById('dname').textContent=BOOK.exp.slice(4,6)+'/'+BOOK.exp.slice(6)+' '+SELK+(SELCP==='C'?' Call':' Put');
+  document.getElementById('dlast').textContent='成交 '+fmt(row.last)+'｜量 '+fmt(row.vol);
+  let h='<tr><td class="q">量</td><td class="q">買進</td><td class="q">賣出</td><td class="q">量</td></tr>';
+  for(let i=0;i<5;i++){
+    h+='<tr><td class="q">'+(row.bq[i]||'')+'</td>'
+      +'<td class="px bidpx" onclick="setPx('+row.bp[i]+')">'+fmt(row.bp[i])+'</td>'
+      +'<td class="px askpx" onclick="setPx('+row.sp[i]+')">'+fmt(row.sp[i])+'</td>'
+      +'<td class="q">'+(row.sq[i]||'')+'</td></tr>';
+  }
+  document.getElementById('lad').innerHTML=h;
+}
+function setPx(v){if(v!=null&&!isNaN(v))document.getElementById('px').value=v;}
+function setSide(s){SIDE=s;
+  document.getElementById('sB').classList.toggle('on',s==='B');
+  document.getElementById('sS').classList.toggle('on',s==='S');
+  const g=document.getElementById('go');
+  g.textContent=(s==='B'?'買進':'賣出')+'送出';
+  g.className='go '+(s==='B'?'goB':'goS');
+  const row=BOOK&&BOOK.rows.find(r=>r.k===SELK&&r.cp===SELCP);
+  if(row)document.getElementById('px').value=s==='B'?(row.sp[0]||''):(row.bp[0]||'');}
+function setType(t){TYPE=t;
+  document.getElementById('tL').classList.toggle('on',t==='LMT');
+  document.getElementById('tM').classList.toggle('on',t==='MKT');
+  document.getElementById('px').disabled=(t==='MKT');}
+function qq(d){const q=document.getElementById('qty');
+  q.value=Math.max(1,Math.min(50,(+q.value||1)+d));}
+async function post(o){
+  const r=await fetch(TUN+'/paper',{method:'POST',
+    headers:{'Content-Type':'text/plain'},body:JSON.stringify(o),
+    signal:AbortSignal.timeout(5000)});
+  return await r.json();
+}
+async function submitOrder(){
+  if(SELK==null){msg('先點選商品',1);return;}
+  const qty=+document.getElementById('qty').value||0;
+  const px=+document.getElementById('px').value||0;
+  const desc=(SIDE==='B'?'買進':'賣出')+' '+SELK+(SELCP==='C'?'C':'P')+' '
+    +(TYPE==='MKT'?'市價':px)+' x'+qty+'口';
+  if(!confirm('模擬下單確認\n'+desc))return;
+  try{
+    const j=await post({act:'new',cp:SELCP,k:SELK,side:SIDE,type:TYPE,price:px,qty:qty});
+    if(j.error){msg(j.error,1);return;}
+    const o=j.order;
+    msg(o.status==='filled'?('成交 '+o.filled+'口'):
+        o.status==='cancelled'?'市價未成交(無對手掛量)':
+        ('已委託'+(o.filled?('，先成交'+o.filled+'口'):'')));
+    paperTick();
+  }catch(e){msg('送單失敗:'+e,1);}
+}
+function tab(t){TAB=t;
+  document.querySelectorAll('.tabs button').forEach(b=>b.classList.toggle('on',b.dataset.t===t));
+  renderList();}
+function renderList(){
+  if(!PAPER)return;
+  const el=document.getElementById('lst');
+  const cn=(o)=>o.k+(o.cp==='C'?'C':'P');
+  let h='';
+  if(TAB==='w'){
+    for(const o of (PAPER.working||[]).slice().reverse())
+      h+='<div class="row"><span class="g">'+o.ts.slice(11,16)+'</span>'
+        +'<b class="'+(o.side==='B'?'bidpx':'askpx')+'">'+(o.side==='B'?'買':'賣')+'</b>'
+        +'<span>'+cn(o)+'</span><span>'+(o.type==='MKT'?'市價':o.price)+'</span>'
+        +'<span>'+o.filled+'/'+o.qty+'口</span>'
+        +'<button class="mini" style="margin-left:auto" onclick="cxl('+o.id+')">刪單</button></div>';
+    h=h||'<div class="row g">無掛單</div>';
+  }else if(TAB==='f'){
+    for(const f of (PAPER.fills||[]).slice().reverse())
+      h+='<div class="row"><span class="g">'+f.ts.slice(11,16)+'</span>'
+        +'<b class="'+(f.side==='B'?'bidpx':'askpx')+'">'+(f.side==='B'?'買':'賣')+'</b>'
+        +'<span>'+cn(f)+'</span><span>@'+f.px+'</span><span>'+f.qty+'口</span></div>';
+    h=h||'<div class="row g">今日無成交</div>';
+  }else if(TAB==='p'){
+    const ps=PAPER.positions||{};
+    for(const key in ps){const p=ps[key];
+      h+='<div class="row"><b class="'+(p.qty>0?'bidpx':'askpx')+'">'+(p.qty>0?'買方':'賣方')+'</b>'
+        +'<span>'+p.k+(p.cp==='C'?'C':'P')+'</span><span>'+Math.abs(p.qty)+'口</span>'
+        +'<span class="g">均價'+p.avg+'</span>'
+        +'<button class="mini" style="margin-left:auto" onclick="flat(\''+key+'\')">市價平倉</button></div>';}
+    h=h||'<div class="row g">無持倉</div>';
+  }else{
+    let tot=0;
+    for(const r of (PAPER.realized||[]).slice().reverse()){tot+=r.pnl;
+      h+='<div class="row"><span class="g">'+r.ts.slice(5,16)+'</span>'
+        +'<span>'+r.key.slice(9)+'</span><span class="g">'+r.entry+'→'+r.exit+'</span>'
+        +'<span>'+r.qty+'口</span>'
+        +'<b class="'+(r.pnl>=0?'ok':'bad')+'" style="margin-left:auto">'+(r.pnl>=0?'+':'')+r.pnl.toLocaleString()+'元</b></div>';}
+    h=('<div class="row"><b>近40筆合計 '+(tot>=0?'+':'')+tot.toLocaleString()+'元</b></div>')+(h||'<div class="row g">尚無平倉紀錄</div>');
+  }
+  el.innerHTML=h;
+}
+async function cxl(id){if(!confirm('刪除委託 #'+id+'?'))return;
+  const j=await post({act:'cancel',id:id});
+  msg(j.error||'已刪單',!!j.error);paperTick();}
+async function flat(key){if(!confirm('市價平倉 '+key.slice(9)+'?'))return;
+  const j=await post({act:'flat',key:key});
+  msg(j.error||'平倉單已送',!!j.error);paperTick();}
+setType('LMT');
+bookTick();paperTick();
+setInterval(bookTick,2000);setInterval(paperTick,3000);
+setInterval(findTun,60000);
+</script></body></html>
