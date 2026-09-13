@@ -39,6 +39,26 @@
   .warn{color:#ff8a5c;font-size:12px;padding:4px 6px}
   .ok{color:var(--dn)} .bad{color:var(--up)}
   #msg{position:fixed;left:50%;bottom:50px;transform:translateX(-50%);background:#222;border:1px solid #444;border-radius:8px;padding:8px 16px;display:none;z-index:9;font-size:14px}
+  /* ═ 浮動下單框(仿crypto.html) ═ */
+  .float{position:fixed;width:250px;background:rgba(8,8,8,.97);border:1px solid #333;
+         border-radius:10px;z-index:50;box-shadow:0 8px 24px rgba(0,0,0,.5)}
+  .fhead{display:flex;align-items:center;gap:6px;padding:7px 9px;border-bottom:1px solid #2a2a2a;
+         cursor:grab;touch-action:none;user-select:none}
+  .fhead .grip{color:#5c6478;font-size:13px;letter-spacing:-1px}
+  .fhead .ft{font-weight:700;font-size:12.5px}
+  .fhead .ft small{color:var(--ink2);font-weight:400;margin-left:3px}
+  .fhead .hb{margin-left:auto;display:flex;gap:2px}
+  .fhead button{background:none;border:0;color:var(--ink2);font-size:14px;cursor:pointer;padding:0 5px}
+  .fbody{padding:6px 10px 10px}
+  .float.min .fbody{display:none}
+  .rsz{position:absolute;right:0;bottom:0;width:22px;height:22px;cursor:nwse-resize;
+       touch-action:none;color:#5c6478;font-size:12px;display:flex;align-items:flex-end;
+       justify-content:flex-end;padding:0 3px 1px 0;user-select:none}
+  .float.min .rsz{display:none}
+  .pill{position:fixed;right:12px;bottom:14px;z-index:50;background:var(--acc);color:#000;
+        border:0;border-radius:99px;padding:9px 16px;font:700 13px inherit;cursor:pointer;
+        box-shadow:0 6px 18px rgba(0,0,0,.5);display:none}
+  .pill.on{display:block}
 </style></head><body>
 <div class="hdr">
   <b>選擇權模擬倉</b>
@@ -49,11 +69,17 @@
 </div>
 <div class="warn" id="warn" style="display:none"></div>
 <table class="tq" id="tq"></table>
-<div class="box" id="detail" style="display:none">
-  <div style="display:flex;gap:10px;align-items:baseline">
-    <b id="dname">--</b><span class="s" id="dlast"></span>
-    <span class="s" style="margin-left:auto;cursor:pointer" onclick="document.getElementById('detail').style.display='none'">✕</span>
-  </div>
+<div class="float" id="detail" style="right:10px;bottom:52px;display:none">
+ <div class="fhead" id="fhead">
+   <span class="grip">⣿</span>
+   <span class="ft" id="dname">--</span>
+   <span class="hb">
+     <button id="minBtn">—</button>
+     <button id="hideBtn">✕</button>
+   </span>
+ </div>
+ <div class="fbody">
+  <div class="s" id="dlast" style="color:#9aa0a6;font-size:11px;padding:2px 0"></div>
   <table class="lad" id="lad"></table>
   <div class="tk">
     <button id="sB" class="on" onclick="setSide('B')">買進</button>
@@ -68,7 +94,10 @@
   <div class="tk">
     <button class="go goB" id="go" onclick="submitOrder()">買進送出</button>
   </div>
+ </div>
+ <div class="rsz" id="rsz">◢</div>
 </div>
+<button class="pill" id="pill">下單</button>
 <div class="tabs">
   <button class="on" data-t="w" onclick="tab('w')">委託</button>
   <button data-t="f" onclick="tab('f')">成交</button>
@@ -139,11 +168,11 @@ function render(){
 }
 function pick(k,cp){SELK=k;SELCP=cp;
   document.getElementById('detail').style.display='block';
+  document.getElementById('pill').classList.remove('on');
   const row=BOOK.rows.find(r=>r.k===k&&r.cp===cp);
   const px=document.getElementById('px');
-  if(row&&!px.value)px.value=SIDE==='B'?(row.sp[0]||''):(row.bp[0]||'');
-  renderDetail();render();
-  document.getElementById('detail').scrollIntoView({behavior:'smooth'});}
+  if(row)px.value=SIDE==='B'?(row.sp[0]||''):(row.bp[0]||'');
+  renderDetail();render();}
 function renderDetail(){
   const row=BOOK&&BOOK.rows.find(r=>r.k===SELK&&r.cp===SELCP);
   if(!row)return;
@@ -243,6 +272,55 @@ async function cxl(id){if(!confirm('刪除委託 #'+id+'?'))return;
 async function flat(key){if(!confirm('市價平倉 '+key.slice(9)+'?'))return;
   const j=await post({act:'flat',key:key});
   msg(j.error||'平倉單已送',!!j.error);paperTick();}
+// ═ 浮動框: 拖曳/縮小/收成膠囊/拖角縮放 (仿crypto.html) ═
+const fl=document.getElementById('detail');
+document.getElementById('minBtn').onclick=()=>{fl.classList.toggle('min');
+  document.getElementById('minBtn').textContent=fl.classList.contains('min')?'▢':'—';};
+document.getElementById('hideBtn').onclick=()=>{fl.style.display='none';
+  document.getElementById('pill').classList.add('on');};
+document.getElementById('pill').onclick=()=>{fl.style.display='block';
+  document.getElementById('pill').classList.remove('on');};
+let fdrag=null;
+const fh=document.getElementById('fhead');
+fh.addEventListener('pointerdown',e=>{
+  if(e.target.tagName==='BUTTON')return;
+  const r=fl.getBoundingClientRect();
+  fdrag={dx:e.clientX-r.left,dy:e.clientY-r.top};
+  fl.style.right='auto';fl.style.bottom='auto';
+  fl.style.left=r.left+'px';fl.style.top=r.top+'px';
+  fh.setPointerCapture(e.pointerId);
+});
+fh.addEventListener('pointermove',e=>{
+  if(!fdrag)return;
+  const fr=fl.getBoundingClientRect();
+  let x=e.clientX-fdrag.dx,y=e.clientY-fdrag.dy;
+  x=Math.max(2,Math.min(window.innerWidth-fr.width-2,x));
+  y=Math.max(2,Math.min(window.innerHeight-fr.height-2,y));
+  fl.style.left=x+'px';fl.style.top=y+'px';
+});
+fh.addEventListener('pointerup',()=>fdrag=null);
+let fscale=1;
+try{fscale=+localStorage.getItem('opt_panel_scale')||1;}catch(e){}
+function applyScale(){fl.style.transformOrigin='top left';fl.style.transform='scale('+fscale+')';}
+if(fscale!==1)applyScale();
+let rsz0=null;
+const rz=document.getElementById('rsz');
+rz.addEventListener('pointerdown',e=>{
+  e.preventDefault();
+  const r=fl.getBoundingClientRect();
+  fl.style.right='auto';fl.style.bottom='auto';
+  fl.style.left=r.left+'px';fl.style.top=r.top+'px';
+  rsz0={x:e.clientX,y:e.clientY,s:fscale};
+  rz.setPointerCapture(e.pointerId);
+});
+rz.addEventListener('pointermove',e=>{
+  if(!rsz0)return;
+  const d=((e.clientX-rsz0.x)+(e.clientY-rsz0.y))/2;
+  fscale=Math.max(0.7,Math.min(1.6,rsz0.s+d/230));
+  applyScale();
+});
+rz.addEventListener('pointerup',()=>{rsz0=null;
+  try{localStorage.setItem('opt_panel_scale',fscale);}catch(e){}});
 setType('LMT');
 bookTick();paperTick();
 setInterval(bookTick,2000);setInterval(paperTick,3000);
