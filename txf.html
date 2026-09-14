@@ -36,6 +36,7 @@
   <span class="px" id="px">--</span><span class="s" id="sess"></span>
   <span class="s">本節均價線 <span id="vw">--</span>（<span id="dv">--</span>）</span>
   <span class="s" id="imp" style="color:#ffe600"></span>
+  <span class="s" id="chain"></span>
   <span class="s" id="ts">載入中…</span>
   <span style="display:flex;gap:4px;align-items:center">
     <input id="jump" placeholder="09021005" inputmode="numeric" style="width:110px;background:#1a1a1a;color:var(--ink);border:1px solid #2a2a2a;border-radius:5px;padding:3px 6px;font-size:13px;font-family:inherit">
@@ -485,9 +486,10 @@ function header(){
   el('px').className='px '+(s.chg_vs_vwap>=0?'up':'dn');
   el('sess').textContent=s.sess;
   const age=LIVE?(Date.now()/1000-new Date(LIVE.t.replace(' ','T')).getTime()/1000):9e9;
-  el('ts').textContent=(LIVE?LIVE.t:'')+(age>300?' ⚠資料延遲':'')+(TUN?' ⚡秒級':' · 雲端60秒')+' · v16';
+  el('ts').textContent=(LIVE?LIVE.t:'')+(age>300?' ⚠資料延遲':'')+(TUN?' ⚡秒級':' · 雲端60秒')+' · v17';
   el('vw').textContent=s.vwap_now!=null?s.vwap_now.toLocaleString():'--';
   el('dv').textContent=s.chg_vs_vwap==null?'--':((s.chg_vs_vwap>=0?'+':'')+s.chg_vs_vwap+'點');
+  chainTick();
 }
 async function loadHist(){
   try{const r=await fetch(RAW+'hist.json?ts='+Math.floor(Date.now()/600000));
@@ -550,11 +552,84 @@ async function impTick(){
     }else el.textContent='';
   }catch(e){el.textContent='';}
 }
+// ═ MA200訊號鏈燈 (2026-09-15 董事長命題: 先做訊號看結果, 純顯示不建倉) ═
+// 鏈=乾淨條(距上次穿越分鐘)+觸線表態(觸線後5分鐘: 插穿35點→85%穿, 推回30點→78%彈)
+// 回測: 燈單獨為負, 乾淨≥60分+時段0900-1205+結構式出場才轉正(n小); 詳見策略庫20260914
+let chainLast=0;
+function chainTick(){
+  const el=document.getElementById('chain');
+  if(!el)return;
+  const now=Date.now();
+  if(now-chainLast<5000)return;
+  chainLast=now;
+  if(M1.length<420){el.textContent='';return;}
+  const tail=M1.slice(-460);                       // 200(MA窗)+~260(評估/回看)
+  const n=tail.length,cl=tail.map(b=>b[4]);
+  let sum=0;for(let i=0;i<200;i++)sum+=cl[i];
+  const dd=new Array(n).fill(null);                // 收盤-連續SMA200(與圖同一條線)
+  for(let i=199;i<n;i++){
+    if(i>199)sum+=cl[i]-cl[i-200];
+    dd[i]=cl[i]-sum/200;
+  }
+  const j=n-1,first=199;
+  let clean=120;                                   // 距上次收盤穿越幾分鐘(封頂120)
+  for(let k=j;k>first;k--){
+    if((dd[k]>0)!==(dd[k-1]>0)){clean=j-k;break;}
+  }
+  let ev=null;                                     // 觸線事件狀態機(與回測同款定義)
+  for(let i=Math.max(first+1,j-90);i<=j;i++){
+    if(Math.abs(dd[i])>15)continue;
+    let s=0;
+    for(let k=i-1;k>=Math.max(first,i-60);k--){
+      if(Math.abs(dd[k])>=80){s=dd[k]>0?1:-1;break;}
+      if((dd[k]>0)!==(dd[i]>0)&&Math.abs(dd[k])>15)break;
+    }
+    if(!s)continue;
+    let res=null,end=i;
+    for(let k=i+1;k<=Math.min(i+45,j);k++){
+      if(dd[k]*(-s)>=50){res='B';end=k;break;}
+      if(dd[k]*s>=80){res='H';end=k;break;}
+    }
+    ev={i,s,res,end};
+    if(res)i=end;else break;                       // 未解決=進行中, 停在這個事件
+  }
+  const d0=new Date(tail[j][0]*1000),hm=d0.getHours()*60+d0.getMinutes();
+  const inWin=hm>=540&&hm<=725;                    // 09:00~12:05
+  const dist=Math.round(dd[j]);
+  let tx='',col='#9aa0a6',tip='';
+  if(ev&&!ev.res&&j-ev.i<=45){
+    const s=ev.s,b=j-ev.i;
+    let pen=0,ret=0;
+    for(let k=ev.i+1;k<=j;k++){pen=Math.max(pen,dd[k]*(-s));ret=Math.max(ret,dd[k]*s);}
+    const brkA=s>0?'↓':'↑',brkC=s>0?'#00c853':'#ff3333';
+    const bncA=s>0?'↑':'↓',bncC=s>0?'#ff3333':'#00c853';
+    if(pen>=35){tx='鏈｜穿越'+brkA+'確認85%';col=brkC;}
+    else if(ret>=30){tx='鏈｜彈回'+bncA+'78%';col=bncC;}
+    else if(b<5){tx='鏈｜觸線 表態'+b+'/5';col='#ffe600';}
+    else{tx='鏈｜黏線'+b+'分';col='#6b7075';}
+    if(!inWin)tx+='·時段外';
+    tip='觸線'+lbl(tail[ev.i][0])+' 從'+(s>0?'上方':'下方')+'來｜插穿'+Math.round(pen)
+      +'點 推回'+Math.round(ret)+'點｜乾淨'+(clean>=120?'120+':clean)+'分'
+      +'｜黏線≥8分未破只剩39%會穿';
+  }else if(ev&&ev.res&&j-ev.end<=15){
+    tx='鏈｜'+(ev.res==='B'?('穿越'+(ev.s>0?'↓':'↑')+'完成'):('彈回'+(ev.s>0?'↑':'↓')+'完成'));
+    col=ev.res==='B'?(ev.s>0?'#00c853':'#ff3333'):(ev.s>0?'#ff3333':'#00c853');
+    tip='事件已解決'+(j-ev.end)+'分鐘｜乾淨計時重新累積中';
+  }else{
+    const cs=clean>=120?'120+':''+clean;
+    if(Math.abs(dist)<=30){tx='鏈｜貼線 乾淨'+cs+'分';col='#9aa0a6';}
+    else if(clean<30){tx='鏈｜洗價'+cs+'分·距'+(dist>0?'+':'')+dist;col='#6b7075';}
+    else{tx='鏈｜乾淨'+cs+'分·距'+(dist>0?'+':'')+dist;col=clean>=60?'#9aa0a6':'#6b7075';}
+    tip='距上次MA200穿越'+cs+'分鐘｜距線'+(dist>0?'+':'')+dist+'點'
+      +'｜可打條件=乾淨≥60分+時段0900~1205的觸線表態｜純顯示不建倉';
+  }
+  el.textContent=tx;el.style.color=col;el.title=tip;
+}
 async function loadFills(){
   try{const r=await fetch(RAW+'fills.json?ts='+Math.floor(Date.now()/300000));
     if(r.ok){FILLS=await r.json();PANELS.forEach(draw);}}catch(e){}
 }
-loadHist();loadLive();loadFills();setInterval(impTick,30000);
+loadHist();loadLive();loadFills();setInterval(impTick,30000);setInterval(chainTick,15000);
 setInterval(loadLive,30000);
 setInterval(loadHist,1800000);
 setInterval(loadFills,1800000);
