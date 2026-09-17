@@ -262,8 +262,8 @@ sizeCharts();window.addEventListener('resize',sizeCharts);
 
 // ═ 十字線: 手機改「長按」才出現(短按/滑動=平移縮放不干擾); 桌機維持滑鼠移動 ═
 const TOUCH=('ontouchstart' in window);
-// 十字標規格v19(董事長0917改): 拖曳=永遠平移畫面(十字開著也是);
-// 靜止長按=放置/移動十字標到該點; 長按在十字標附近(40px)=關閉; 雙指=原生縮放
+// 十字標規格(董事長定): 單指原地長按3秒→出現; 再長按3秒→消失(開關式)
+// 縮放/平移手勢不會誤觸發; 十字標開著時: 單指拖=移動十字標, 雙指捏=縮放(自製pinch)
 function setupLongPress(p,div){
   let timer=null,sx=0,sy=0,pinch0=null,tipDrag=null;
   const HOLD=1000;
@@ -294,11 +294,13 @@ function setupLongPress(p,div){
   function setCross(on){
     p.cross=on;
     if(navigator.vibrate)try{navigator.vibrate(on?[40,60,40]:40);}catch(_){ }
-    if(!on){
+    if(on){
+      p.chart.setOption({dataZoom:[{disabled:true}]});   // 開十字標: 關echarts原生手勢
+    }else{
       p.closeVal=null;p._tip=null;tipDrag=null;
       p.chart.dispatchAction({type:'hideTip'});
       p.chart.clear();draw(p);                            // 徹底重畫: 十字線+虛線+框框全清(修卡在原地bug)
-    }                                                     // v19: 不再關原生手勢, 拖曳永遠=平移
+    }
   }
   div.addEventListener('touchstart',e=>{
     const te=tipEl();
@@ -312,20 +314,22 @@ function setupLongPress(p,div){
     if(e.touches.length===1){
       const t=e.touches[0];sx=t.clientX;sy=t.clientY;pinch0=null;
       clearTimeout(timer);
-      timer=setTimeout(()=>{                              // v19: 靜止長按=放置/移動; 按在十字附近=關閉
+      timer=setTimeout(()=>{
         const r=div.getBoundingClientRect();
-        const x=sx-r.left,y=sy-r.top;
-        if(p.cross&&p.lastCrossXY&&Math.hypot(x-p.lastCrossXY[0],y-p.lastCrossXY[1])<=40){
-          setCross(false);
-        }else if(p.cross){
-          if(navigator.vibrate)try{navigator.vibrate(40);}catch(_){ }
-          moveCross(x,y);
-        }else{
-          setCross(true);moveCross(x,y);
-        }
+        setCross(!p.cross);
+        if(p.cross)moveCross(sx-r.left,sy-r.top);
       },HOLD);
+      if(p.cross){const q=pos(t);moveCross(q.x,q.y);}
     }else{
-      clearTimeout(timer);                                // 第二指=縮放意圖(原生手勢處理), 不算長按
+      clearTimeout(timer);                                // 第二指=縮放意圖, 不算長按
+      if(p.cross&&e.touches.length===2){
+        const dx=e.touches[0].clientX-e.touches[1].clientX,
+              dy=e.touches[0].clientY-e.touches[1].clientY;
+        const d=CACHE[p.tf],n=d?d.labels.length:0;
+        const w=p.win||{size:(p.tf===1?240:120),right:true,endI:n-1};
+        pinch0={d0:Math.hypot(dx,dy),size0:w.size,
+                endI0:w.right?n-1:w.endI,right0:w.right};
+      }
     }
   },{passive:true});
   div.addEventListener('touchmove',e=>{
@@ -339,8 +343,27 @@ function setupLongPress(p,div){
     }
     if(e.touches.length===1){
       const t=e.touches[0];
-      if(Math.abs(t.clientX-sx)>12||Math.abs(t.clientY-sy)>12)clearTimeout(timer); // 有移動=平移, 不算長按
-    }                                                     // v19: 拖曳交給原生手勢, 十字只由長按移動
+      if(Math.abs(t.clientX-sx)>12||Math.abs(t.clientY-sy)>12){
+        clearTimeout(timer);
+        if(!p.cross){                            // v20: 沒十字標時, 平移不累積秒數
+          sx=t.clientX;sy=t.clientY;             // 重新錨定, 靜止滿HOLD才算長按
+          timer=setTimeout(()=>{const r=div.getBoundingClientRect();
+            setCross(true);moveCross(sx-r.left,sy-r.top);},HOLD);
+        }
+      }
+      if(p.cross){e.preventDefault();const q=pos(t);moveCross(q.x,q.y);}
+    }else if(p.cross&&pinch0&&e.touches.length===2){
+      e.preventDefault();                                 // 十字標開著也能雙指縮放
+      const dx=e.touches[0].clientX-e.touches[1].clientX,
+            dy=e.touches[0].clientY-e.touches[1].clientY;
+      const scale=Math.hypot(dx,dy)/pinch0.d0;
+      const d=CACHE[p.tf];if(!d)return;
+      const n=d.labels.length;
+      const size=Math.max(10,Math.min(n,Math.round(pinch0.size0/scale)));
+      p.win={size:size,right:pinch0.right0,
+             endI:pinch0.right0?n-1:Math.min(n-1,pinch0.endI0)};
+      draw(p);
+    }
   },{passive:false});
   const end=e=>{clearTimeout(timer);tipDrag=null;
     if(!e.touches||e.touches.length<2)pinch0=null;};
@@ -470,7 +493,7 @@ function header(){
   el('px').className='px '+(s.chg_vs_vwap>=0?'up':'dn');
   el('sess').textContent=s.sess;
   const age=LIVE?(Date.now()/1000-new Date(LIVE.t.replace(' ','T')).getTime()/1000):9e9;
-  el('ts').textContent=(LIVE?LIVE.t:'')+(age>300?' ⚠資料延遲':'')+(TUN?' ⚡秒級':' · 雲端60秒')+' · v19';
+  el('ts').textContent=(LIVE?LIVE.t:'')+(age>300?' ⚠資料延遲':'')+(TUN?' ⚡秒級':' · 雲端60秒')+' · v20';
   el('vw').textContent=s.vwap_now!=null?s.vwap_now.toLocaleString():'--';
   el('dv').textContent=s.chg_vs_vwap==null?'--':((s.chg_vs_vwap>=0?'+':'')+s.chg_vs_vwap+'點');
   chainTick();
