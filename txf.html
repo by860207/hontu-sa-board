@@ -518,16 +518,16 @@ function header(){
   el('px').className='px '+(s.chg_vs_vwap>=0?'up':'dn');
   el('sess').textContent=s.sess;
   const age=LIVE?(Date.now()/1000-new Date(LIVE.t.replace(' ','T')).getTime()/1000):9e9;
-  if(R.on){el('ts').textContent='🎬回放 '+repClock()+' · v21.2';el('ts').style.color='#8bc34a';}
+  if(R.on){el('ts').textContent='🎬回放 '+repClock()+(R.d&&R.d.synth?'(台指)':'')+' · v21.3';el('ts').style.color='#8bc34a';}
   else{el('ts').style.color='';
-  el('ts').textContent=(LIVE?LIVE.t:'')+(age>300?' ⚠資料延遲':'')+(TUN?' ⚡秒級':' · 雲端60秒')+' · v21.2';}
+  el('ts').textContent=(LIVE?LIVE.t:'')+(age>300?' ⚠資料延遲':'')+(TUN?' ⚡秒級':' · 雲端60秒')+' · v21.3';}
   el('vw').textContent=s.vwap_now!=null?s.vwap_now.toLocaleString():'--';
   el('dv').textContent=s.chg_vs_vwap==null?'--':((s.chg_vs_vwap>=0?'+':'')+s.chg_vs_vwap+'點');
   chainTick();
 }
 async function loadHist(){
   try{const r=await fetch(RAW+'hist.json?ts='+Math.floor(Date.now()/600000));
-    if(r.ok){HIST=await r.json();mergeBars();PANELS.forEach(draw);header();}}
+    if(r.ok){HIST=await r.json();R.hdays=null;mergeBars();PANELS.forEach(draw);header();}}
   catch(e){}
 }
 function gotLive(j){
@@ -706,12 +706,37 @@ function repClock(){if(!R.d)return '';const d=new Date((R.d.t0+R.cur)*1000);
 async function repLoadIndex(){
   try{const r=await fetch(RAW+'replay_index.json?ts='+Math.floor(Date.now()/600000));if(r.ok)R.index=await r.json();}catch(e){}
 }
+function repHistDays(){                          // hist.json裡有日盤K的所有日期(90天) → 可做台指回放
+  if(R.hdays)return R.hdays;
+  const s=new Map();
+  if(HIST)for(const b of HIST.bars){const d=new Date(b[0]*1000),hm=d.getHours()*60+d.getMinutes();
+    if(hm<525||hm>=825)continue;
+    const k=''+d.getFullYear()+pad(d.getMonth()+1)+pad(d.getDate());s.set(k,(s.get(k)||0)+1);}
+  R.hdays=new Map([...s].filter(x=>x[1]>=100));   // 至少100根=完整日盤
+  return R.hdays;
+}
+function repSynth(ymd){                          // 沒有錄影的日子: 用hist.json的1分K合成台指回放(每根展開4點)
+  const y=+ymd.slice(0,4),mo=+ymd.slice(4,6)-1,dd=+ymd.slice(6);
+  const t0=new Date(y,mo,dd,8,45).getTime()/1000,t1=new Date(y,mo,dd,13,45).getTime()/1000;
+  const px=[];
+  if(HIST)for(const b of HIST.bars){
+    if(b[0]<t0||b[0]>t1)continue;
+    const off=b[0]-t0,q=Math.round(b[5]/4);
+    const seq=b[4]>=b[1]?[b[1],b[3],b[2],b[4]]:[b[1],b[2],b[3],b[4]];
+    for(let i=0;i<4;i++)px.push([off+i*15,seq[i],q]);
+  }
+  if(!px.length)return null;
+  return {date:y+'-'+pad(mo+1)+'-'+pad(dd),fut:'',exp:null,t0:t0,t1:t1,px:px,strikes:[],opt:{},book:[],synth:true};
+}
 async function repStart(ymd,blind){
   const el=document.getElementById('repPanel');el.innerHTML='<div class="row">載入 '+(blind?'盲抽':ymd)+' 回放資料…</div>';
-  let d;
-  try{const r=await fetch(RAW+'replay_'+ymd+'.json?ts='+Math.floor(Date.now()/3600000));if(!r.ok)throw 0;d=await r.json();}
-  catch(e){el.innerHTML='<div class="row">沒有 '+ymd+' 的回放資料</div>';setTimeout(repPanelRender,1200);return;}
-  Object.assign(R,{d:d,on:true,blind:!!blind,cur:0,idx:0,bi:0,bars:new Map(),marks:[],pos:{},trades:[],pend:[],log:[],done:false,last:null,mini:true,qty:R.qty||1});
+  let d=null;
+  if((R.index||[]).some(x=>x.date===ymd)){       // 有錄影的日子: 完整版(選擇權+五檔)
+    try{const r=await fetch(RAW+'replay_'+ymd+'.json?ts='+Math.floor(Date.now()/3600000));if(r.ok)d=await r.json();}catch(e){}
+  }
+  if(!d)d=repSynth(ymd);                         // 其餘: 用hist.json合成台指版
+  if(!d){el.innerHTML='<div class="row">沒有 '+ymd+' 的資料(非交易日或超過90天)</div>';setTimeout(()=>{R.calOpen=false;repPanelRender();},1500);return;}
+  Object.assign(R,{d:d,on:true,blind:!!blind,calOpen:false,cur:0,idx:0,bi:0,bars:new Map(),marks:[],pos:{},trades:[],pend:[],log:[],done:false,last:null,mini:true,qty:R.qty||1});
   const dd=new Date(d.t0*1000);R.day0=new Date(dd.getFullYear(),dd.getMonth(),dd.getDate());
   R.optKeys=Object.keys(d.opt||{}).sort((a,b)=>a[0]!==b[0]?(a<b?-1:1):(+a.slice(1)-+b.slice(1)));
   const p0=d.px.length?d.px[0][1]:0,atm='C'+(Math.round(p0/50)*50-200);   // 預設選ATM附近的C(期貨-基差約200)
@@ -828,13 +853,42 @@ function repPanelRender(){
   const el=document.getElementById('repPanel');if(el.style.display!=='block')return;
   if(!R.on){
     const wd=s=>'日一二三四五六'[new Date(+s.slice(0,4),+s.slice(4,6)-1,+s.slice(6)).getDay()];
-    const chips=(R.index||[]).slice().reverse().map(x=>'<span class="chip" data-d="'+x.date+'">'+x.date.slice(4,6)+'/'+x.date.slice(6)+'('+wd(x.date)+')'+(x.book?'':'·無五檔')+'</span>').join(' ');
-    el.innerHTML='<div class="row"><b style="color:#8bc34a">🎬回放練習</b><span style="color:#9aa0a6">選一天從08:45開始走, 之後的K看不到; 選擇權用當天真實五檔成交</span></div>'
-      +'<div class="row">'+(chips||'<span style="color:#9aa0a6">(尚無回放資料)</span>')+'</div>'
-      +'<div class="row"><input id="repYmd" placeholder="20260918" inputmode="numeric" style="width:100px"> <button class="repbtn" id="repGo">開始</button> <button class="repbtn warn" id="repBlind">盲抽一天(不顯示日期)</button><span style="margin-left:auto;cursor:pointer;padding:0 6px" id="repX">✕</span></div>';
-    el.querySelectorAll('.chip').forEach(c=>c.onclick=()=>{el.querySelector('#repYmd').value=c.dataset.d;});
+    const optDays=new Set((R.index||[]).filter(x=>x.opt).map(x=>x.date));
+    if(R.calOpen){                                // 月曆: 綠=有選擇權可下單, 白=只有台指, 灰=無資料
+      const ym=R.calYM||(()=>{const a=[...repHistDays().keys()].sort();return (a[a.length-1]||'202609').slice(0,6);})();
+      R.calYM=ym;const y=+ym.slice(0,4),mo=+ym.slice(4,6)-1;
+      const first=new Date(y,mo,1),last=new Date(y,mo+1,0),hd=repHistDays();
+      let h='<div class="row"><button class="repbtn" id="calP">‹</button><b>'+y+'-'+pad(mo+1)+'</b><button class="repbtn" id="calN">›</button>'
+        +'<span style="color:#8bc34a">●選擇權</span><span style="color:#e8e8e8">○台指</span>'
+        +'<button class="repbtn" id="calBack">返回</button><span style="margin-left:auto;cursor:pointer;padding:0 6px" id="repX">✕</span></div>'
+        +'<table style="width:100%"><tr>'+['日','一','二','三','四','五','六'].map(x=>'<th style="text-align:center;color:#9aa0a6">'+x+'</th>').join('')+'</tr><tr>';
+      for(let i=0;i<first.getDay();i++)h+='<td></td>';
+      let col=first.getDay();
+      for(let dd=1;dd<=last.getDate();dd++){
+        const ymd=''+y+pad(mo+1)+pad(dd);
+        const full=optDays.has(ymd),has=full||hd.has(ymd);
+        h+='<td style="text-align:center">'+(has
+          ?'<span class="chip" data-cd="'+ymd+'" style="color:'+(full?'#8bc34a':'#e8e8e8')+'">'+dd+'</span>'
+          :'<span style="color:#3a3a3a">'+dd+'</span>')+'</td>';
+        if(++col%7===0)h+='</tr><tr>';
+      }
+      el.innerHTML=h+'</tr></table><div class="row" style="color:#9aa0a6;font-size:11px">綠色=有選擇權與五檔錄影(可下選擇權)｜白色=只有台指K線(下台指期)｜共'+hd.size+'天可回放</div>';
+      el.querySelectorAll('[data-cd]').forEach(c=>c.onclick=()=>{R.calOpen=false;repStart(c.dataset.cd,false);});
+      el.querySelector('#calP').onclick=()=>{const t=new Date(y,mo-1,1);R.calYM=''+t.getFullYear()+pad(t.getMonth()+1);repPanelRender();};
+      el.querySelector('#calN').onclick=()=>{const t=new Date(y,mo+1,1);R.calYM=''+t.getFullYear()+pad(t.getMonth()+1);repPanelRender();};
+      el.querySelector('#calBack').onclick=()=>{R.calOpen=false;repPanelRender();};
+      el.querySelector('#repX').onclick=()=>{el.style.display='none';};
+      return;
+    }
+    const chips=(R.index||[]).slice().reverse().map(x=>'<span class="chip" data-d="'+x.date+'" style="color:'+(x.opt?'#8bc34a':'#e8e8e8')+'">'+x.date.slice(4,6)+'/'+x.date.slice(6)+'('+wd(x.date)+')</span>').join(' ');
+    el.innerHTML='<div class="row"><b style="color:#8bc34a">🎬回放練習</b><span style="color:#9aa0a6">選一天從08:45開始走, 之後的K看不到</span></div>'
+      +'<div class="row">近期錄影日 '+(chips||'<span style="color:#9aa0a6">(無)</span>')+'</div>'
+      +'<div class="row"><input id="repYmd" placeholder="20260918" inputmode="numeric" style="width:100px"><button class="repbtn" id="repCal">📅月曆</button><button class="repbtn" id="repGo">開始</button><button class="repbtn warn" id="repBlind">盲抽</button><span style="margin-left:auto;cursor:pointer;padding:0 6px" id="repX">✕</span></div>'
+      +'<div class="row" style="color:#9aa0a6;font-size:11px">綠色=有選擇權可下單; 其餘日子(近90天)可回放台指期</div>';
+    el.querySelectorAll('.chip').forEach(c=>c.onclick=()=>{repStart(c.dataset.d,false);});
+    el.querySelector('#repCal').onclick=()=>{R.calOpen=true;repPanelRender();};
     el.querySelector('#repGo').onclick=()=>{const v=el.querySelector('#repYmd').value.trim();if(/^\d{8}$/.test(v))repStart(v,false);};
-    el.querySelector('#repBlind').onclick=()=>{const L=(R.index||[]).filter(x=>x.opt);if(!L.length)return;repStart(L[Math.floor(Math.random()*L.length)].date,true);};
+    el.querySelector('#repBlind').onclick=()=>{const L=[...repHistDays().keys()];if(!L.length)return;repStart(L[Math.floor(Math.random()*L.length)],true);};
     el.querySelector('#repX').onclick=()=>{el.style.display='none';};
     return;
   }
@@ -845,7 +899,7 @@ function repPanelRender(){
   let book='';                                   // 左: 選中的選擇權五檔; 右: 台指期五檔('F', feeder v2.2起錄影才有)
   const so=bk&&R.sel!=='F'?bk[1][R.sel]:null, sf=bk?bk[1]['F']:null;
   if(R.sel!=='F')book+=so?bookTbl(so,R.sel)+(stale?'<div style="color:#ff9100;font-size:10px">五檔>1分鐘未更新→掛下一分鐘開盤</div>':''):'<div style="color:#9aa0a6;font-size:10px">'+R.sel+'無五檔錄影<br>市價=下一分鐘開盤</div>';
-  book+=sf?bookTbl(sf,'台指期'):'<div style="color:#9aa0a6;font-size:10px">台指五檔<br>(9/22起的回放日才有)</div>';
+  book+=sf?bookTbl(sf,'台指期'):'<div style="color:#9aa0a6;font-size:10px">台指五檔<br>'+(R.d.book.length?'(9/22起的回放日才有)':'(這天無五檔錄影)')+'</div>';
   const opts='<option value="F"'+(R.sel==='F'?' selected':'')+'>期貨(小台1點50元)</option>'+R.optKeys.map(k=>'<option value="'+k+'"'+(k===R.sel?' selected':'')+'>'+k+'</option>').join('');
   const posRows=Object.keys(R.pos).map(k=>{const p=R.pos[k];return '<tr><td>'+(k==='F'?'期貨':k)+'</td><td class="'+(p.qty>0?'buy':'sell')+'">'+(p.qty>0?'多':'空')+Math.abs(p.qty)+'</td><td>@'+p.avg+'</td><td>'+fmtT(p.t)+'</td><td><button class="repbtn" data-flat="'+k+'">平倉</button></td></tr>';}).join('');
   const realized=R.trades.reduce((s,x)=>s+x.pnl,0);
