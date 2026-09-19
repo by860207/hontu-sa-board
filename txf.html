@@ -31,6 +31,19 @@
   .sigitem{padding:5px 12px;font-size:13px;cursor:pointer;border-bottom:1px solid #1a1a1a;
     font-variant-numeric:tabular-nums}
   .sigitem:active,.sigitem:hover{background:#1c2a33}
+  #repPanel{display:none;position:fixed;left:8px;right:8px;z-index:98;background:#101010;
+    border:1px solid #3a3520;border-radius:8px;max-height:70vh;overflow-y:auto;
+    box-shadow:0 4px 18px rgba(0,0,0,.6);padding:6px 8px;font-size:12px}
+  #repPanel .row{display:flex;gap:5px;align-items:center;flex-wrap:wrap;margin:3px 0}
+  #repPanel select,#repPanel input{background:#1a1a1a;color:var(--ink);border:1px solid #2a2a2a;
+    border-radius:4px;padding:2px 4px;font-size:12px;font-family:inherit}
+  #repPanel .chip{background:#1a1a1a;border:1px solid #2a2a2a;border-radius:10px;padding:1px 8px;cursor:pointer}
+  #repPanel .chip.on{background:#4a4520;border-color:#ffe600;color:#ffe600}
+  #repPanel table{border-collapse:collapse;font-variant-numeric:tabular-nums}
+  #repPanel td,#repPanel th{padding:1px 5px;border-bottom:1px solid #1e1e1e;text-align:right;white-space:nowrap}
+  #repPanel .buy{color:#ff3333}#repPanel .sell{color:#00c853}
+  .repbtn{background:#1a1a1a;color:var(--ink);border:1px solid #2a2a2a;border-radius:5px;padding:2px 9px;font-size:12px;cursor:pointer;font-family:inherit}
+  .repbtn.warn{color:#ffe600;border-color:#4a4520}
 </style></head><body>
 <div class="hdr">
   <span class="px" id="px">--</span><span class="s" id="sess"></span>
@@ -42,32 +55,40 @@
     <input id="jump" placeholder="09021005" inputmode="numeric" style="width:110px;background:#1a1a1a;color:var(--ink);border:1px solid #2a2a2a;border-radius:5px;padding:3px 6px;font-size:13px;font-family:inherit">
     <button id="jumpBtn" class="tfbtn" style="padding:3px 10px">跳至</button>
     <button id="sigBtn" class="tfbtn" style="padding:3px 10px;color:#ffe600;border-color:#4a4520">訊號</button>
+    <button id="repBtn" class="tfbtn" style="padding:3px 10px;color:#8bc34a;border-color:#2e4a20">回放</button>
   </span>
   <a href="opt.html" style="margin-left:0;color:#ffe600">模擬倉</a>
   <a href="index.html">← 訊號看板</a>
 </div>
 <div id="sigPanel"></div>
+<div id="repPanel"></div>
 <div id="panels"></div>
 <script>
 const RAW='https://raw.githubusercontent.com/by860207/hontu-sa-board/live/';
 const css=getComputedStyle(document.documentElement);
 const C={up:css.getPropertyValue('--up').trim(),dn:css.getPropertyValue('--dn').trim(),
          ink:css.getPropertyValue('--ink').trim(),ink2:css.getPropertyValue('--ink2').trim()};
-const MACOLOR=['#ffe600','#35c8ff','#c65fe8','#ff9100'];
-let PANELS=[{tf:5,ma:[5,10,20,60],volh:12},{tf:15,ma:[5,10,20,60],volh:12}];
+const MACOLOR=['#ffe600','#35c8ff','#c65fe8','#ff9100','#8bc34a'];
+let PANELS=[{tf:5,ma:[5,10,20,60,40],volh:12},{tf:15,ma:[5,10,20,60,40],volh:12}];
 try{const sv=JSON.parse(localStorage.getItem('txfcloud_panels'));
     if(Array.isArray(sv)&&sv.length===2)PANELS=PANELS.map((p,i)=>Object.assign(p,sv[i]));}catch(e){}
+PANELS.forEach(p=>{while(p.ma.length<5)p.ma.push(40);});   // v21: 第5條均線(董事長: 5分加MA40), 舊設定自動補
 function save(){try{localStorage.setItem('txfcloud_panels',JSON.stringify(
   PANELS.map(p=>({tf:p.tf,ma:p.ma,volh:p.volh}))));}catch(e){}}
 
 let HIST=null,LIVE=null,M1=[],FILLS=null;   // M1: [[ts,o,h,l,c,v,pv],...] FILLS: 實際成交紀錄
 const CACHE={};                  // tf -> {labels,ohlc,vol,stats}
+const R={on:false,blind:false,d:null,day0:null,bars:new Map(),marks:[],liveHold:null};  // v21 回放練習狀態
 
 // ═ 資料合流 + 週期合成(頁面端) ═
 function mergeBars(){
   const m=new Map();
   if(HIST)for(const b of HIST.bars)m.set(b[0],b);
   if(LIVE)for(const b of LIVE.bars)m.set(b[0],b);
+  if(R.on){                                   // 回放: 回放日t0之後全部換成回放到游標為止的K(不看未來)
+    for(const k of [...m.keys()])if(k>=R.d.t0)m.delete(k);
+    for(const b of R.bars.values())m.set(b[0],b);
+  }
   M1=[...m.values()].sort((a,b)=>a[0]-b[0]);
   for(const k in CACHE)delete CACHE[k];
 }
@@ -80,6 +101,9 @@ function sessOf(ts){  // 回傳 [種類,錨字串] 或 null; ts=unix秒(手機�
 }
 function pad(n){return (n<10?'0':'')+n;}
 function lbl(ts){const d=new Date(ts*1000);
+  if(R.on&&R.blind){                           // 盲抽: 不露日期, 只給「前N日/當日 HH:MM」
+    const dd=Math.round((new Date(d.getFullYear(),d.getMonth(),d.getDate())-R.day0)/86400000);
+    return (dd===0?'當日':('前'+(-dd)+'日'))+' '+pad(d.getHours())+':'+pad(d.getMinutes());}
   return pad(d.getMonth()+1)+'-'+pad(d.getDate())+' '+pad(d.getHours())+':'+pad(d.getMinutes());}
 function getTF(tf){
   if(CACHE[tf])return CACHE[tf];
@@ -443,7 +467,8 @@ function draw(p){
       {name:p.tf+'分K',type:'candlestick',data:d.ohlc,
        markPoint:{silent:false,animation:false,z:20,data:(function(){
          const pts=[];
-         if(FILLS)for(const f2 of FILLS){
+         const FL=R.on?R.marks:FILLS;            // 回放: 畫練習單, 不畫實倉
+         if(FL)for(const f2 of FL){
            const b2=Math.floor(f2.t/(p.tf*60))*(p.tf*60);
            let lo=0,hi=d.ts.length-1,ix=-1;
            while(lo<=hi){const mid=(lo+hi)>>1;
@@ -493,7 +518,9 @@ function header(){
   el('px').className='px '+(s.chg_vs_vwap>=0?'up':'dn');
   el('sess').textContent=s.sess;
   const age=LIVE?(Date.now()/1000-new Date(LIVE.t.replace(' ','T')).getTime()/1000):9e9;
-  el('ts').textContent=(LIVE?LIVE.t:'')+(age>300?' ⚠資料延遲':'')+(TUN?' ⚡秒級':' · 雲端60秒')+' · v20';
+  if(R.on){el('ts').textContent='🎬回放 '+repClock()+' · v21';el('ts').style.color='#8bc34a';}
+  else{el('ts').style.color='';
+  el('ts').textContent=(LIVE?LIVE.t:'')+(age>300?' ⚠資料延遲':'')+(TUN?' ⚡秒級':' · 雲端60秒')+' · v21';}
   el('vw').textContent=s.vwap_now!=null?s.vwap_now.toLocaleString():'--';
   el('dv').textContent=s.chg_vs_vwap==null?'--':((s.chg_vs_vwap>=0?'+':'')+s.chg_vs_vwap+'點');
   chainTick();
@@ -504,6 +531,7 @@ async function loadHist(){
   catch(e){}
 }
 function gotLive(j){
+  if(R.on){R.liveHold=j;return;}       // 回放中: 即時資料先擱著, 結束回放再接回
   // 發現/更新隧道網址(家裡電腦廣播的秒級通道)
   if(j&&j.tun&&j.tun!==TUN){TUN=j.tun;tunFail=0;
     if(!tunTimer)tunTimer=setInterval(tunnelTick,2000);
@@ -528,7 +556,7 @@ async function loadLive(){
 // ═ 秒級模式: 經Cloudflare隧道每2秒直取家裡的/m1(與live.json同格式) ═
 let TUN=null,tunFail=0,tunTimer=null;
 async function tunnelTick(){
-  if(!TUN)return;
+  if(!TUN||R.on)return;
   try{
     const r=await fetch(TUN+'/m1',{signal:AbortSignal.timeout(4000)});
     if(!r.ok)throw 0;
@@ -667,6 +695,192 @@ async function loadFills(){
   try{const r=await fetch(RAW+'fills.json?ts='+Math.floor(Date.now()/300000));
     if(r.ok){FILLS=await r.json();PANELS.forEach(draw);}}catch(e){}
 }
+// ═ 回放練習模式 v21 (2026-09-19 董事長核准「做」) ═
+// 選日或盲抽 → 該日08:45起像看盤一樣逐5秒走(之前的K照常顯示, 之後的一根都看不到)
+// 下單=市價: 選擇權吃「當時真實五檔」(有錄影的日子; 五檔超過1分鐘沒更新則改掛下一分鐘開盤), 期貨=最新價±1tick
+// 部位只顯示方向/口數/均價, 不顯示浮動損益(紀律); 收盤或按結束→成績單: 損益+四關+「照規則出場」對照
+Object.assign(R,{speed:10,timer:null,idx:0,bi:0,cur:0,pos:{},trades:[],pend:[],log:[],index:[],done:false,last:null,optKeys:[],sel:'F'});
+const MULT=50;                                  // 每點50元(選擇權/小台)
+function repClock(){if(!R.d)return '';const d=new Date((R.d.t0+R.cur)*1000);
+  return (R.blind?'':R.d.date+' ')+pad(d.getHours())+':'+pad(d.getMinutes())+':'+pad(d.getSeconds());}
+async function repLoadIndex(){
+  try{const r=await fetch(RAW+'replay_index.json?ts='+Math.floor(Date.now()/600000));if(r.ok)R.index=await r.json();}catch(e){}
+}
+async function repStart(ymd,blind){
+  const el=document.getElementById('repPanel');el.innerHTML='<div class="row">載入 '+(blind?'盲抽':ymd)+' 回放資料…</div>';
+  let d;
+  try{const r=await fetch(RAW+'replay_'+ymd+'.json?ts='+Math.floor(Date.now()/3600000));if(!r.ok)throw 0;d=await r.json();}
+  catch(e){el.innerHTML='<div class="row">沒有 '+ymd+' 的回放資料</div>';setTimeout(repPanelRender,1200);return;}
+  Object.assign(R,{d:d,on:true,blind:!!blind,cur:0,idx:0,bi:0,bars:new Map(),marks:[],pos:{},trades:[],pend:[],log:[],done:false,last:null});
+  const dd=new Date(d.t0*1000);R.day0=new Date(dd.getFullYear(),dd.getMonth(),dd.getDate());
+  R.optKeys=Object.keys(d.opt||{}).sort((a,b)=>a[0]!==b[0]?(a<b?-1:1):(+a.slice(1)-+b.slice(1)));
+  const p0=d.px.length?d.px[0][1]:0,atm='C'+(Math.round(p0/50)*50-200);   // 預設選ATM附近的C(期貨-基差約200)
+  R.sel=R.optKeys.includes(atm)?atm:(R.optKeys.length?R.optKeys[Math.floor(R.optKeys.length/4)]:'F');
+  SIG.mark=null;PANELS.forEach(p=>{p.win=null;p.chart.clear();});
+  repAdvance(0);repRender();
+}
+function repBarPush(off,px,qty){                // 5秒點 → 1分K [ts,o,h,l,c,v,pv]
+  const ts=R.d.t0+Math.floor(off/60)*60;let b=R.bars.get(ts);
+  if(!b){b=[ts,px,px,px,px,0,0];R.bars.set(ts,b);}
+  if(px>b[2])b[2]=px;if(px<b[3])b[3]=px;b[4]=px;b[5]+=qty;b[6]+=px*qty;
+}
+function repAdvance(sec){                       // 游標前進sec秒: 消化價格點/五檔指標/掛單
+  const d=R.d,px=d.px,end=d.t1-d.t0;
+  R.cur=Math.min(end,R.cur+sec);
+  while(R.idx<px.length&&px[R.idx][0]<=R.cur){const p=px[R.idx];repBarPush(p[0],p[1],p[2]);R.last=p[1];repFillPending(p);R.idx++;}
+  while(R.bi<d.book.length&&d.book[R.bi][0]<=R.cur)R.bi++;
+  mergeBars();
+  if(R.cur>=end&&!R.done){R.done=true;repPause();repFlatAll('收盤強制平倉');}
+}
+function repBookNow(){return R.bi>0?R.d.book[R.bi-1]:null;}
+function repOptBar(key,m){const rows=R.d.opt[key]||[];for(const r of rows){if(r[0]===m)return r;if(r[0]>m)break;}return null;}
+function repOptLast(key){                       // 不偷看: 本分鐘只用開盤價, 否則上一根完整分鐘收盤
+  const rows=R.d.opt[key]||[],m=Math.floor(R.cur/60);let last=null;
+  for(const r of rows){if(r[0]<m)last=r[4];else if(r[0]===m)return r[1];else break;}
+  return last;
+}
+function repOrder(key,side,qty){
+  if(!R.on||R.done||!(qty>0))return;
+  const m=Math.floor(R.cur/60);
+  if(key==='F'){if(R.last==null)return;repFill(key,side,qty,R.last+(side==='B'?1:-1),'市價±1tick');repRender();return;}
+  const bk=repBookNow(),snap=bk&&bk[1][key];
+  if(snap&&(R.cur-bk[0])<=60){                  // 近1分鐘內的真實五檔 → 逐檔吃(IOC)
+    const pr=side==='B'?snap[2]:snap[0],qs=side==='B'?snap[3]:snap[1];let rem=qty;
+    for(let i=0;i<5&&rem>0;i++){const p=pr[i],q=qs[i];if(!p||!q)continue;const t=Math.min(rem,q);repFill(key,side,t,p,'吃五檔'+(i+1));rem-=t;}
+    if(rem>0)R.log.push(repClock()+' '+key+' 五檔量不足, '+rem+'口未成交');
+  }else{R.pend.push({key,side,qty,m});R.log.push(repClock()+' '+key+(side==='B'?' 買':' 賣')+qty+'口 掛下一分鐘開盤');}
+  repRender();
+}
+function repFillPending(p){                      // 新分鐘第一個價格點到 → 掛單以該分鐘選擇權開盤成交
+  if(!R.pend.length)return;const m=Math.floor(p[0]/60);
+  R.pend=R.pend.filter(o=>{
+    if(m<=o.m)return true;
+    const bar=repOptBar(o.key,m);
+    if(!bar){if(m-o.m>5){R.log.push(o.key+' 5分鐘無成交, 掛單取消');return false;}return true;}
+    repFill(o.key,o.side,o.qty,bar[1],'下一分開盤',R.d.t0+m*60);return false;   // 成交時間=那一分鐘, 不是游標
+  });
+}
+function repFill(key,side,qty,px,how,tAt){
+  const t=tAt!=null?tAt:(R.d.t0+R.cur),signed=side==='B'?qty:-qty,nm=key==='F'?'期貨':key;
+  R.marks.push({t:t,bs:side,pid:nm,price:px,qty:qty});
+  R.log.push(fmtT(t)+' '+(side==='B'?'買':'賣')+nm+' '+qty+'口 @'+px+' ('+how+')');
+  let pos=R.pos[key];
+  if(!pos){R.pos[key]={qty:signed,avg:px,t:t};return;}
+  if(pos.qty*signed>0){pos.avg=+((pos.avg*Math.abs(pos.qty)+px*qty)/(Math.abs(pos.qty)+qty)).toFixed(2);pos.qty+=signed;return;}
+  const cq=Math.min(Math.abs(pos.qty),qty),wasL=pos.qty>0;
+  R.trades.push({key:nm,dir:wasL?'多':'空',qty:cq,tin:pos.t,pin:pos.avg,tout:t,pout:px,pnl:Math.round((px-pos.avg)*MULT*cq*(wasL?1:-1))});
+  const nq=pos.qty+signed;
+  if(nq===0)delete R.pos[key];else{pos.qty=nq;if((nq>0)!==wasL){pos.avg=px;pos.t=t;}}
+}
+function repFlatAll(why){
+  for(const k of Object.keys(R.pos)){const p=R.pos[k];let px=k==='F'?R.last:repOptLast(k);if(px==null)px=p.avg;
+    repFill(k,p.qty>0?'S':'B',Math.abs(p.qty),px,why);}
+}
+function repPlay(){if(R.timer||R.done)return;R.timer=setInterval(()=>{repAdvance(5);repRender();},Math.max(100,5000/R.speed));repPanelRender();}
+function repPause(){if(R.timer){clearInterval(R.timer);R.timer=null;}}
+function repRender(){PANELS.forEach(draw);header();repPanelRender();}
+function repExit(){
+  repPause();R.on=false;R.d=null;R.bars=new Map();R.marks=[];
+  mergeBars();PANELS.forEach(p=>{p.win=null;p.chart.clear();});
+  if(R.liveHold){const j=R.liveHold;R.liveHold=null;gotLive(j);}
+  PANELS.forEach(draw);header();document.getElementById('repPanel').style.display='none';loadLive();
+}
+function fmtT(t){const d=new Date(t*1000);return pad(d.getHours())+':'+pad(d.getMinutes());}
+function repReport(){                            // 成績單: 四關 + 照規則(5分MA10追蹤)出場對照
+  const tr=R.trades;if(!tr.length)return '<div class="row">沒有交易</div>';
+  const d1=getTF(1),d5=getTF(5);
+  const c1=d1?d1.ohlc.map(v=>v[1]):[],ma20=sma(c1,20);
+  const c5=d5?d5.ohlc.map(v=>v[1]):[],ma10=sma(c5,10);
+  const idx1=t=>{let lo=0,hi=d1.ts.length-1;while(lo<hi){const m=(lo+hi)>>1;if(d1.ts[m]<t)lo=m+1;else hi=m;}return lo;};
+  const optPx=(key,t)=>{const m=Math.floor((t-R.d.t0)/60);const rows=R.d.opt[key]||[];let last=null;
+    for(const r of rows){if(r[0]<m)last=r[4];else if(r[0]===m)return r[1];else break;}return last;};
+  let tot=0,flags={時間:0,情緒:0,口數:0,位置:0},rows='',ruleTot=0,prev=null;
+  for(const x of tr){
+    tot+=x.pnl;const hmIn=new Date(x.tin*1000);const hm=hmIn.getHours()*60+hmIn.getMinutes();
+    const f=[];
+    if(hm>=735){f.push('時間');flags.時間++;}
+    if(prev&&x.tin-prev.tout<600&&x.tin>prev.tout-1){f.push('情緒');flags.情緒++;}
+    if(prev&&prev.pnl<0&&x.qty>prev.qty){f.push('口數');flags.口數++;}
+    if(d1){const i=idx1(x.tin);if(ma20[i]!=null&&Math.abs(c1[i]-ma20[i])<=15){f.push('位置');flags.位置++;}}
+    // 規則出場: 進場後第一根「收完的5分K」收盤反向穿5分MA10 → 該5分K收完的下一分鐘出場
+    let rule='—',rulePnl=null;
+    const bull=(x.dir==='多')!==(x.key[0]==='P');     // 看多指數? 買P/賣C=看空
+    if(d5){let i5=0;while(i5<d5.ts.length&&d5.ts[i5]+300<=x.tin)i5++;   // 進場時進行中的5分K之後
+      for(let k=i5;k<d5.ts.length;k++){const tclose=d5.ts[k]+300;if(tclose>R.d.t1)break;if(ma10[k]==null)continue;
+        const against=bull?c5[k]<ma10[k]:c5[k]>ma10[k];
+        if(against&&tclose>x.tin){const tx=tclose;let px=x.key==='期貨'?(()=>{const i=idx1(tx);return d1.ohlc[i][0];})():optPx(x.key,tx);
+          if(px!=null){rulePnl=Math.round((px-x.pin)*MULT*x.qty*(x.dir==='多'?1:-1));rule=fmtT(tx)+' @'+px+' → '+(rulePnl>=0?'+':'')+rulePnl.toLocaleString();}break;}}
+      if(rulePnl==null){const px=x.key==='期貨'?R.last:optPx(x.key,R.d.t1-60);if(px!=null){rulePnl=Math.round((px-x.pin)*MULT*x.qty*(x.dir==='多'?1:-1));rule='抱到收盤 @'+px+' → '+(rulePnl>=0?'+':'')+rulePnl.toLocaleString();}}}
+    if(rulePnl!=null)ruleTot+=rulePnl;
+    rows+='<tr><td>'+x.key+'</td><td>'+x.dir+x.qty+'</td><td>'+fmtT(x.tin)+' @'+x.pin+'</td><td>'+fmtT(x.tout)+' @'+x.pout+'</td>'
+      +'<td class="'+(x.pnl>=0?'buy':'sell')+'">'+(x.pnl>=0?'+':'')+x.pnl.toLocaleString()+'</td><td>'+(f.length?f.join('/'):'✓')+'</td><td style="text-align:left">'+rule+'</td></tr>';
+    prev=x;
+  }
+  const txt='📋成績單 '+(R.blind?R.d.date+'(盲抽揭曉)':R.d.date)+'｜'+tr.length+'筆 合計'+(tot>=0?'+':'')+tot.toLocaleString()+'元'
+    +'｜四關違規 時間'+flags.時間+' 情緒'+flags.情緒+' 口數'+flags.口數+' 位置'+flags.位置
+    +'｜同進場照規則(5分MA10)出場合計'+(ruleTot>=0?'+':'')+ruleTot.toLocaleString()+'元';
+  try{const L=JSON.parse(localStorage.getItem('txf_replay_log')||'[]');L.push({at:new Date().toISOString().slice(0,16),date:R.d.date,n:tr.length,pnl:tot,rule:ruleTot,flags:flags});
+    localStorage.setItem('txf_replay_log',JSON.stringify(L.slice(-100)));}catch(e){}
+  return '<div class="row" style="color:#ffe600">'+txt+'</div><div style="overflow-x:auto"><table><tr><th>商品</th><th>方向</th><th>進</th><th>出</th><th>損益</th><th>四關</th><th style="text-align:left">照規則出場</th></tr>'+rows+'</table></div>'
+    +'<div class="row" style="color:#9aa0a6">四關: 時間=12:15後進場｜情緒=平倉10分內再進｜口數=上筆虧損後加口｜位置=進場時距1分MA20≤15(洗價區)</div>';
+}
+function repPanelRender(){
+  const el=document.getElementById('repPanel');if(el.style.display!=='block')return;
+  if(!R.on){
+    const chips=(R.index||[]).slice().reverse().map(x=>'<span class="chip" data-d="'+x.date+'">'+x.date.slice(4,6)+'/'+x.date.slice(6)+(x.book?'':'·無五檔')+'</span>').join(' ');
+    el.innerHTML='<div class="row"><b style="color:#8bc34a">🎬回放練習</b><span style="color:#9aa0a6">選一天從08:45開始走, 之後的K看不到; 選擇權用當天真實五檔成交</span></div>'
+      +'<div class="row">'+(chips||'<span style="color:#9aa0a6">(尚無回放資料)</span>')+'</div>'
+      +'<div class="row"><input id="repYmd" placeholder="20260918" inputmode="numeric" style="width:100px"> <button class="repbtn" id="repGo">開始</button> <button class="repbtn warn" id="repBlind">盲抽一天(不顯示日期)</button><span style="margin-left:auto;cursor:pointer;padding:0 6px" id="repX">✕</span></div>';
+    el.querySelectorAll('.chip').forEach(c=>c.onclick=()=>{el.querySelector('#repYmd').value=c.dataset.d;});
+    el.querySelector('#repGo').onclick=()=>{const v=el.querySelector('#repYmd').value.trim();if(/^\d{8}$/.test(v))repStart(v,false);};
+    el.querySelector('#repBlind').onclick=()=>{const L=(R.index||[]).filter(x=>x.opt);if(!L.length)return;repStart(L[Math.floor(Math.random()*L.length)].date,true);};
+    el.querySelector('#repX').onclick=()=>{el.style.display='none';};
+    return;
+  }
+  const bk=repBookNow(),snap=bk&&R.sel!=='F'?bk[1][R.sel]:null,stale=bk?(R.cur-bk[0]>60):true;
+  let book='';
+  if(R.sel!=='F'){
+    if(snap){book='<table style="font-size:11px">'+[4,3,2,1,0].map(i=>'<tr><td></td><td class="sell">'+(snap[2][i]||'')+'</td><td>'+(snap[3][i]||'')+'</td></tr>').join('')
+      +[0,1,2,3,4].map(i=>'<tr><td class="buy">'+(snap[0][i]||'')+'</td><td></td><td>'+(snap[1][i]||'')+'</td></tr>').join('')+'</table>'
+      +(stale?'<div style="color:#ff9100">五檔超過1分鐘沒更新(斷線段) → 改掛下一分鐘開盤</div>':'');}
+    else book='<div style="color:#9aa0a6">此檔無五檔錄影 → 市價=下一分鐘開盤</div>';
+  }
+  const opts='<option value="F"'+(R.sel==='F'?' selected':'')+'>期貨(小台1點50元)</option>'+R.optKeys.map(k=>'<option value="'+k+'"'+(k===R.sel?' selected':'')+'>'+k+'</option>').join('');
+  const posRows=Object.keys(R.pos).map(k=>{const p=R.pos[k];return '<tr><td>'+(k==='F'?'期貨':k)+'</td><td class="'+(p.qty>0?'buy':'sell')+'">'+(p.qty>0?'多':'空')+Math.abs(p.qty)+'</td><td>@'+p.avg+'</td><td>'+fmtT(p.t)+'</td><td><button class="repbtn" data-flat="'+k+'">平倉</button></td></tr>';}).join('');
+  const realized=R.trades.reduce((s,x)=>s+x.pnl,0);
+  el.innerHTML='<div class="row"><b style="color:#8bc34a">🎬 '+repClock()+'</b> 價'+(R.last==null?'--':R.last)
+    +'<button class="repbtn" id="rp0">⏮</button><button class="repbtn" id="rpPlay">'+(R.timer?'⏸':'▶')+'</button><button class="repbtn" id="rp1">+1分</button><button class="repbtn" id="rp5">+5分</button>'
+    +'<select id="rpSpd">'+[1,5,10,30,60].map(s=>'<option value="'+s+'"'+(s===R.speed?' selected':'')+'>'+s+'x</option>').join('')+'</select>'
+    +'<button class="repbtn warn" id="rpEnd">'+(R.done?'成績單':'結束')+'</button><span style="margin-left:auto;cursor:pointer;padding:0 6px" id="rpX">✕收起</span></div>'
+    +(R.done?repReport():'')
+    +'<div class="row"><select id="rpSel">'+opts+'</select> 口數<input id="rpQty" type="number" min="1" max="20" value="1" style="width:44px">'
+    +'<button class="repbtn buy" id="rpBuy" style="border-color:#ff3333">買進</button><button class="repbtn sell" id="rpSell" style="border-color:#00c853">賣出</button>'
+    +'<span style="color:#9aa0a6">已實現 '+(realized>=0?'+':'')+realized.toLocaleString()+'元</span></div>'
+    +'<div class="row" style="align-items:flex-start">'+book+'<div style="flex:1;overflow-x:auto">'
+    +(posRows?'<table><tr><th>部位</th><th>方向</th><th>均價</th><th>進場</th><th></th></tr>'+posRows+'</table>':'<span style="color:#9aa0a6">無部位</span>')
+    +'</div></div>'
+    +'<div class="row" style="color:#9aa0a6;font-size:11px;display:block">'+R.log.slice(-4).join('<br>')+'</div>';
+  el.querySelector('#rp0').onclick=()=>{const b=R.blind;repStart(R.d.date.replace(/-/g,''),b);};
+  el.querySelector('#rpPlay').onclick=()=>{R.timer?(repPause(),repPanelRender()):repPlay();};
+  el.querySelector('#rp1').onclick=()=>{repPause();repAdvance(60);repRender();};
+  el.querySelector('#rp5').onclick=()=>{repPause();repAdvance(300);repRender();};
+  el.querySelector('#rpSpd').onchange=e=>{R.speed=+e.target.value;if(R.timer){repPause();repPlay();}};
+  el.querySelector('#rpEnd').onclick=()=>{if(!R.done){repPause();R.done=true;repFlatAll('手動結束平倉');repRender();}else{repExit();}};
+  el.querySelector('#rpX').onclick=()=>{el.style.display='none';};
+  el.querySelector('#rpSel').onchange=e=>{R.sel=e.target.value;repPanelRender();};
+  const q=()=>Math.max(1,+el.querySelector('#rpQty').value||1);
+  el.querySelector('#rpBuy').onclick=()=>repOrder(R.sel,'B',q());
+  el.querySelector('#rpSell').onclick=()=>repOrder(R.sel,'S',q());
+  el.querySelectorAll('[data-flat]').forEach(b=>b.onclick=()=>{const k=b.dataset.flat,p=R.pos[k];if(p)repOrder(k,p.qty>0?'S':'B',Math.abs(p.qty));});
+}
+document.getElementById('repBtn').onclick=async()=>{
+  const el=document.getElementById('repPanel');
+  if(el.style.display==='block'){el.style.display='none';return;}
+  el.style.top=(document.querySelector('.hdr').offsetHeight+6)+'px';
+  if(!R.index.length)await repLoadIndex();
+  el.style.display='block';repPanelRender();
+};
+
 loadHist();loadLive();loadFills();setInterval(impTick,30000);setInterval(chainTick,15000);
 setInterval(loadLive,30000);
 setInterval(loadHist,1800000);
