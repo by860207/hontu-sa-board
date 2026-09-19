@@ -518,9 +518,9 @@ function header(){
   el('px').className='px '+(s.chg_vs_vwap>=0?'up':'dn');
   el('sess').textContent=s.sess;
   const age=LIVE?(Date.now()/1000-new Date(LIVE.t.replace(' ','T')).getTime()/1000):9e9;
-  if(R.on){el('ts').textContent='🎬回放 '+repClock()+' · v21';el('ts').style.color='#8bc34a';}
+  if(R.on){el('ts').textContent='🎬回放 '+repClock()+' · v21.2';el('ts').style.color='#8bc34a';}
   else{el('ts').style.color='';
-  el('ts').textContent=(LIVE?LIVE.t:'')+(age>300?' ⚠資料延遲':'')+(TUN?' ⚡秒級':' · 雲端60秒')+' · v21';}
+  el('ts').textContent=(LIVE?LIVE.t:'')+(age>300?' ⚠資料延遲':'')+(TUN?' ⚡秒級':' · 雲端60秒')+' · v21.2';}
   el('vw').textContent=s.vwap_now!=null?s.vwap_now.toLocaleString():'--';
   el('dv').textContent=s.chg_vs_vwap==null?'--':((s.chg_vs_vwap>=0?'+':'')+s.chg_vs_vwap+'點');
   chainTick();
@@ -838,16 +838,18 @@ function repPanelRender(){
     el.querySelector('#repX').onclick=()=>{el.style.display='none';};
     return;
   }
-  const bk=repBookNow(),snap=bk?bk[1][R.sel]:null,stale=bk?(R.cur-bk[0]>60):true;   // 'F'=台指期五檔(feeder v2.2起錄影才有)
-  let book='';
-  if(snap){book='<table style="font-size:11px">'+[4,3,2,1,0].map(i=>'<tr><td></td><td class="sell">'+(snap[2][i]||'')+'</td><td>'+(snap[3][i]||'')+'</td></tr>').join('')
-    +[0,1,2,3,4].map(i=>'<tr><td class="buy">'+(snap[0][i]||'')+'</td><td></td><td>'+(snap[1][i]||'')+'</td></tr>').join('')+'</table>'
-    +(stale&&R.sel!=='F'?'<div style="color:#ff9100">五檔超過1分鐘沒更新(斷線段) → 改掛下一分鐘開盤</div>':'');}
-  else book='<div style="color:#9aa0a6">'+(R.sel==='F'?'這天沒有台指五檔錄影(9/22起才有)':'此檔無五檔錄影 → 市價=下一分鐘開盤')+'</div>';
+  const bk=repBookNow(),stale=bk?(R.cur-bk[0]>60):true;
+  const bookTbl=(snap,title)=>'<div><div style="color:#9aa0a6;font-size:10px">'+title+'</div><table style="font-size:11px">'
+    +[4,3,2,1,0].map(i=>'<tr><td></td><td class="sell">'+(snap[2][i]||'')+'</td><td>'+(snap[3][i]||'')+'</td></tr>').join('')
+    +[0,1,2,3,4].map(i=>'<tr><td class="buy">'+(snap[0][i]||'')+'</td><td></td><td>'+(snap[1][i]||'')+'</td></tr>').join('')+'</table></div>';
+  let book='';                                   // 左: 選中的選擇權五檔; 右: 台指期五檔('F', feeder v2.2起錄影才有)
+  const so=bk&&R.sel!=='F'?bk[1][R.sel]:null, sf=bk?bk[1]['F']:null;
+  if(R.sel!=='F')book+=so?bookTbl(so,R.sel)+(stale?'<div style="color:#ff9100;font-size:10px">五檔>1分鐘未更新→掛下一分鐘開盤</div>':''):'<div style="color:#9aa0a6;font-size:10px">'+R.sel+'無五檔錄影<br>市價=下一分鐘開盤</div>';
+  book+=sf?bookTbl(sf,'台指期'):'<div style="color:#9aa0a6;font-size:10px">台指五檔<br>(9/22起的回放日才有)</div>';
   const opts='<option value="F"'+(R.sel==='F'?' selected':'')+'>期貨(小台1點50元)</option>'+R.optKeys.map(k=>'<option value="'+k+'"'+(k===R.sel?' selected':'')+'>'+k+'</option>').join('');
   const posRows=Object.keys(R.pos).map(k=>{const p=R.pos[k];return '<tr><td>'+(k==='F'?'期貨':k)+'</td><td class="'+(p.qty>0?'buy':'sell')+'">'+(p.qty>0?'多':'空')+Math.abs(p.qty)+'</td><td>@'+p.avg+'</td><td>'+fmtT(p.t)+'</td><td><button class="repbtn" data-flat="'+k+'">平倉</button></td></tr>';}).join('');
   const realized=R.trades.reduce((s,x)=>s+x.pnl,0);
-  const ctl='<b style="color:#8bc34a">🎬'+repClock()+'</b> 價'+(R.last==null?'--':R.last)
+  const ctl='<b id="rpHandle" style="color:#8bc34a;cursor:move;touch-action:none;padding:2px 4px;border:1px dashed #2e4a20;border-radius:4px">✥🎬'+repClock()+'</b> 價'+(R.last==null?'--':R.last)
     +'<button class="repbtn" id="rpPlay">'+(R.timer?'⏸':'▶')+'</button><button class="repbtn" id="rp1">+1</button><button class="repbtn" id="rp5">+5</button>';
   const order='<select id="rpSel">'+opts+'</select><input id="rpQty" type="number" min="1" max="20" value="'+(R.qty||1)+'" style="width:40px">'
     +'<button class="repbtn buy" id="rpBuy" style="border-color:#ff3333">買</button><button class="repbtn sell" id="rpSell" style="border-color:#00c853">賣</button>';
@@ -860,15 +862,20 @@ function repPanelRender(){
     el.innerHTML='<div class="row">'+ctl+'<button class="repbtn" id="rp0">⏮</button>'
       +'<select id="rpSpd">'+[1,5,10,30,60].map(s=>'<option value="'+s+'"'+(s===R.speed?' selected':'')+'>'+s+'x</option>').join('')+'</select>'
       +'<button class="repbtn warn" id="rpEnd">'+(R.done?'退出回放':'結束')+'</button>'
-      +(R.done?'':'<button class="repbtn" id="rpMin">縮小</button>')+'<span style="cursor:pointer;padding:0 6px" id="rpX">✕</span></div>'
+      +(R.done?'':'<button class="repbtn" id="rpMin">縮小</button>')
+      +'<input id="rpZoom" type="range" min="60" max="130" value="'+(R.zoom||100)+'" title="縮放" style="width:60px">'
+      +'<span style="cursor:pointer;padding:0 6px" id="rpX">✕</span></div>'
       +(R.done?repReport():'')
       +'<div class="row">'+order+'<span style="color:#9aa0a6">已實現 '+(realized>=0?'+':'')+realized.toLocaleString()+'元</span></div>'
-      +'<div class="row" style="align-items:flex-start">'+book+'<div style="flex:1;overflow-x:auto">'
+      +'<div class="row" style="align-items:flex-start;gap:12px">'+book+'</div>'
+      +'<div class="row" style="overflow-x:auto">'
       +(posRows?'<table><tr><th>部位</th><th>方向</th><th>均價</th><th>進場</th><th></th></tr>'+posRows+'</table>':'<span style="color:#9aa0a6">無部位</span>')
-      +'</div></div>'
+      +'</div>'
       +'<div class="row" style="color:#9aa0a6;font-size:11px;display:block">'+R.log.slice(-4).join('<br>')+'</div>';
   }
   const on=(id,fn)=>{const x=el.querySelector('#'+id);if(x)x.onclick=fn;};
+  repDrag(el);
+  const zm=el.querySelector('#rpZoom');if(zm)zm.oninput=e=>{R.zoom=+e.target.value;el.style.zoom=R.zoom/100;try{localStorage.setItem('txf_rep_zoom',R.zoom);}catch(_){}};
   on('rp0',()=>{const b=R.blind;repStart(R.d.date.replace(/-/g,''),b);});
   on('rpPlay',()=>{R.timer?(repPause(),repPanelRender()):repPlay();});
   on('rp1',()=>{repPause();repAdvance(60);repRender();});
@@ -885,10 +892,31 @@ function repPanelRender(){
   on('rpSell',()=>repOrder(R.sel,'S',q()));
   el.querySelectorAll('[data-flat]').forEach(b=>b.onclick=()=>{const k=b.dataset.flat,p=R.pos[k];if(p)repOrder(k,p.qty>0?'S':'B',Math.abs(p.qty));});
 }
+function repDrag(el){                            // 拖曳把手(✥🎬): 手指/滑鼠拖到哪停到哪, 位置記住
+  const h=el.querySelector('#rpHandle');if(!h)return;
+  const D=R.drag||(R.drag={sx:0,sy:0,ox:0,oy:0,on:false});
+  const start=(x,y)=>{const r=el.getBoundingClientRect();D.sx=x;D.sy=y;D.ox=r.left;D.oy=r.top;D.on=true;
+    el.style.right='auto';el.style.width=r.width+'px';};
+  const move=(x,y)=>{if(!D.on)return;const z=(R.zoom||100)/100;
+    el.style.left=Math.max(0,Math.min(window.innerWidth-60,D.ox+(x-D.sx)))/z+'px';
+    el.style.top=Math.max(0,Math.min(window.innerHeight-40,D.oy+(y-D.sy)))/z+'px';};
+  const end=()=>{if(!D.on)return;D.on=false;try{localStorage.setItem('txf_rep_pos',JSON.stringify({l:el.style.left,t:el.style.top,w:el.style.width}));}catch(_){}};
+  h.addEventListener('touchstart',e=>{const t=e.touches[0];start(t.clientX,t.clientY);},{passive:true});
+  h.addEventListener('touchmove',e=>{e.preventDefault();const t=e.touches[0];move(t.clientX,t.clientY);},{passive:false});
+  h.addEventListener('touchend',end);
+  h.addEventListener('mousedown',e=>{start(e.clientX,e.clientY);e.preventDefault();});
+  if(!R.dragDoc){R.dragDoc=true;                 // document層監聽只掛一次(面板每tick重繪)
+    document.addEventListener('mousemove',e=>{if(R.drag&&R.drag.on){const el2=document.getElementById('repPanel');const z=(R.zoom||100)/100;
+      el2.style.left=Math.max(0,Math.min(window.innerWidth-60,R.drag.ox+(e.clientX-R.drag.sx)))/z+'px';
+      el2.style.top=Math.max(0,Math.min(window.innerHeight-40,R.drag.oy+(e.clientY-R.drag.sy)))/z+'px';}});
+    document.addEventListener('mouseup',()=>{if(R.drag)R.drag.on=false;});}
+}
 document.getElementById('repBtn').onclick=async()=>{
   const el=document.getElementById('repPanel');
   if(el.style.display==='block'){el.style.display='none';return;}
   el.style.top=(document.querySelector('.hdr').offsetHeight+6)+'px';
+  try{const ps=JSON.parse(localStorage.getItem('txf_rep_pos')||'null');if(ps&&ps.l){el.style.left=ps.l;el.style.top=ps.t;el.style.width=ps.w;el.style.right='auto';}
+      R.zoom=+(localStorage.getItem('txf_rep_zoom')||100);el.style.zoom=R.zoom/100;}catch(_){}
   if(!R.index.length)await repLoadIndex();
   el.style.display='block';repPanelRender();
 };
