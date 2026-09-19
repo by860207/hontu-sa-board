@@ -711,7 +711,7 @@ async function repStart(ymd,blind){
   let d;
   try{const r=await fetch(RAW+'replay_'+ymd+'.json?ts='+Math.floor(Date.now()/3600000));if(!r.ok)throw 0;d=await r.json();}
   catch(e){el.innerHTML='<div class="row">沒有 '+ymd+' 的回放資料</div>';setTimeout(repPanelRender,1200);return;}
-  Object.assign(R,{d:d,on:true,blind:!!blind,cur:0,idx:0,bi:0,bars:new Map(),marks:[],pos:{},trades:[],pend:[],log:[],done:false,last:null});
+  Object.assign(R,{d:d,on:true,blind:!!blind,cur:0,idx:0,bi:0,bars:new Map(),marks:[],pos:{},trades:[],pend:[],log:[],done:false,last:null,mini:true,qty:R.qty||1});
   const dd=new Date(d.t0*1000);R.day0=new Date(dd.getFullYear(),dd.getMonth(),dd.getDate());
   R.optKeys=Object.keys(d.opt||{}).sort((a,b)=>a[0]!==b[0]?(a<b?-1:1):(+a.slice(1)-+b.slice(1)));
   const p0=d.px.length?d.px[0][1]:0,atm='C'+(Math.round(p0/50)*50-200);   // 預設選ATM附近的C(期貨-基差約200)
@@ -827,7 +827,8 @@ function repReport(){                            // 成績單: 四關 + 照規�
 function repPanelRender(){
   const el=document.getElementById('repPanel');if(el.style.display!=='block')return;
   if(!R.on){
-    const chips=(R.index||[]).slice().reverse().map(x=>'<span class="chip" data-d="'+x.date+'">'+x.date.slice(4,6)+'/'+x.date.slice(6)+(x.book?'':'·無五檔')+'</span>').join(' ');
+    const wd=s=>'日一二三四五六'[new Date(+s.slice(0,4),+s.slice(4,6)-1,+s.slice(6)).getDay()];
+    const chips=(R.index||[]).slice().reverse().map(x=>'<span class="chip" data-d="'+x.date+'">'+x.date.slice(4,6)+'/'+x.date.slice(6)+'('+wd(x.date)+')'+(x.book?'':'·無五檔')+'</span>').join(' ');
     el.innerHTML='<div class="row"><b style="color:#8bc34a">🎬回放練習</b><span style="color:#9aa0a6">選一天從08:45開始走, 之後的K看不到; 選擇權用當天真實五檔成交</span></div>'
       +'<div class="row">'+(chips||'<span style="color:#9aa0a6">(尚無回放資料)</span>')+'</div>'
       +'<div class="row"><input id="repYmd" placeholder="20260918" inputmode="numeric" style="width:100px"> <button class="repbtn" id="repGo">開始</button> <button class="repbtn warn" id="repBlind">盲抽一天(不顯示日期)</button><span style="margin-left:auto;cursor:pointer;padding:0 6px" id="repX">✕</span></div>';
@@ -837,40 +838,51 @@ function repPanelRender(){
     el.querySelector('#repX').onclick=()=>{el.style.display='none';};
     return;
   }
-  const bk=repBookNow(),snap=bk&&R.sel!=='F'?bk[1][R.sel]:null,stale=bk?(R.cur-bk[0]>60):true;
+  const bk=repBookNow(),snap=bk?bk[1][R.sel]:null,stale=bk?(R.cur-bk[0]>60):true;   // 'F'=台指期五檔(feeder v2.2起錄影才有)
   let book='';
-  if(R.sel!=='F'){
-    if(snap){book='<table style="font-size:11px">'+[4,3,2,1,0].map(i=>'<tr><td></td><td class="sell">'+(snap[2][i]||'')+'</td><td>'+(snap[3][i]||'')+'</td></tr>').join('')
-      +[0,1,2,3,4].map(i=>'<tr><td class="buy">'+(snap[0][i]||'')+'</td><td></td><td>'+(snap[1][i]||'')+'</td></tr>').join('')+'</table>'
-      +(stale?'<div style="color:#ff9100">五檔超過1分鐘沒更新(斷線段) → 改掛下一分鐘開盤</div>':'');}
-    else book='<div style="color:#9aa0a6">此檔無五檔錄影 → 市價=下一分鐘開盤</div>';
-  }
+  if(snap){book='<table style="font-size:11px">'+[4,3,2,1,0].map(i=>'<tr><td></td><td class="sell">'+(snap[2][i]||'')+'</td><td>'+(snap[3][i]||'')+'</td></tr>').join('')
+    +[0,1,2,3,4].map(i=>'<tr><td class="buy">'+(snap[0][i]||'')+'</td><td></td><td>'+(snap[1][i]||'')+'</td></tr>').join('')+'</table>'
+    +(stale&&R.sel!=='F'?'<div style="color:#ff9100">五檔超過1分鐘沒更新(斷線段) → 改掛下一分鐘開盤</div>':'');}
+  else book='<div style="color:#9aa0a6">'+(R.sel==='F'?'這天沒有台指五檔錄影(9/22起才有)':'此檔無五檔錄影 → 市價=下一分鐘開盤')+'</div>';
   const opts='<option value="F"'+(R.sel==='F'?' selected':'')+'>期貨(小台1點50元)</option>'+R.optKeys.map(k=>'<option value="'+k+'"'+(k===R.sel?' selected':'')+'>'+k+'</option>').join('');
   const posRows=Object.keys(R.pos).map(k=>{const p=R.pos[k];return '<tr><td>'+(k==='F'?'期貨':k)+'</td><td class="'+(p.qty>0?'buy':'sell')+'">'+(p.qty>0?'多':'空')+Math.abs(p.qty)+'</td><td>@'+p.avg+'</td><td>'+fmtT(p.t)+'</td><td><button class="repbtn" data-flat="'+k+'">平倉</button></td></tr>';}).join('');
   const realized=R.trades.reduce((s,x)=>s+x.pnl,0);
-  el.innerHTML='<div class="row"><b style="color:#8bc34a">🎬 '+repClock()+'</b> 價'+(R.last==null?'--':R.last)
-    +'<button class="repbtn" id="rp0">⏮</button><button class="repbtn" id="rpPlay">'+(R.timer?'⏸':'▶')+'</button><button class="repbtn" id="rp1">+1分</button><button class="repbtn" id="rp5">+5分</button>'
-    +'<select id="rpSpd">'+[1,5,10,30,60].map(s=>'<option value="'+s+'"'+(s===R.speed?' selected':'')+'>'+s+'x</option>').join('')+'</select>'
-    +'<button class="repbtn warn" id="rpEnd">'+(R.done?'成績單':'結束')+'</button><span style="margin-left:auto;cursor:pointer;padding:0 6px" id="rpX">✕收起</span></div>'
-    +(R.done?repReport():'')
-    +'<div class="row"><select id="rpSel">'+opts+'</select> 口數<input id="rpQty" type="number" min="1" max="20" value="1" style="width:44px">'
-    +'<button class="repbtn buy" id="rpBuy" style="border-color:#ff3333">買進</button><button class="repbtn sell" id="rpSell" style="border-color:#00c853">賣出</button>'
-    +'<span style="color:#9aa0a6">已實現 '+(realized>=0?'+':'')+realized.toLocaleString()+'元</span></div>'
-    +'<div class="row" style="align-items:flex-start">'+book+'<div style="flex:1;overflow-x:auto">'
-    +(posRows?'<table><tr><th>部位</th><th>方向</th><th>均價</th><th>進場</th><th></th></tr>'+posRows+'</table>':'<span style="color:#9aa0a6">無部位</span>')
-    +'</div></div>'
-    +'<div class="row" style="color:#9aa0a6;font-size:11px;display:block">'+R.log.slice(-4).join('<br>')+'</div>';
-  el.querySelector('#rp0').onclick=()=>{const b=R.blind;repStart(R.d.date.replace(/-/g,''),b);};
-  el.querySelector('#rpPlay').onclick=()=>{R.timer?(repPause(),repPanelRender()):repPlay();};
-  el.querySelector('#rp1').onclick=()=>{repPause();repAdvance(60);repRender();};
-  el.querySelector('#rp5').onclick=()=>{repPause();repAdvance(300);repRender();};
-  el.querySelector('#rpSpd').onchange=e=>{R.speed=+e.target.value;if(R.timer){repPause();repPlay();}};
-  el.querySelector('#rpEnd').onclick=()=>{if(!R.done){repPause();R.done=true;repFlatAll('手動結束平倉');repRender();}else{repExit();}};
-  el.querySelector('#rpX').onclick=()=>{el.style.display='none';};
-  el.querySelector('#rpSel').onchange=e=>{R.sel=e.target.value;repPanelRender();};
-  const q=()=>Math.max(1,+el.querySelector('#rpQty').value||1);
-  el.querySelector('#rpBuy').onclick=()=>repOrder(R.sel,'B',q());
-  el.querySelector('#rpSell').onclick=()=>repOrder(R.sel,'S',q());
+  const ctl='<b style="color:#8bc34a">🎬'+repClock()+'</b> 價'+(R.last==null?'--':R.last)
+    +'<button class="repbtn" id="rpPlay">'+(R.timer?'⏸':'▶')+'</button><button class="repbtn" id="rp1">+1</button><button class="repbtn" id="rp5">+5</button>';
+  const order='<select id="rpSel">'+opts+'</select><input id="rpQty" type="number" min="1" max="20" value="'+(R.qty||1)+'" style="width:40px">'
+    +'<button class="repbtn buy" id="rpBuy" style="border-color:#ff3333">買</button><button class="repbtn sell" id="rpSell" style="border-color:#00c853">賣</button>';
+  if(R.mini&&!R.done){                            // 縮小: 只剩一條操作列, 不擋圖 (董事長0919要求)
+    el.style.maxHeight='none';
+    el.innerHTML='<div class="row">'+ctl+order+'<span style="color:#9aa0a6">'+(Object.keys(R.pos).length?Object.keys(R.pos).map(k=>{const p=R.pos[k];return (k==='F'?'期':k)+(p.qty>0?'多':'空')+Math.abs(p.qty);}).join(' '):'無部位')+'</span>'
+      +'<button class="repbtn" id="rpMax" style="margin-left:auto">展開</button></div>';
+  }else{
+    el.style.maxHeight='70vh';
+    el.innerHTML='<div class="row">'+ctl+'<button class="repbtn" id="rp0">⏮</button>'
+      +'<select id="rpSpd">'+[1,5,10,30,60].map(s=>'<option value="'+s+'"'+(s===R.speed?' selected':'')+'>'+s+'x</option>').join('')+'</select>'
+      +'<button class="repbtn warn" id="rpEnd">'+(R.done?'退出回放':'結束')+'</button>'
+      +(R.done?'':'<button class="repbtn" id="rpMin">縮小</button>')+'<span style="cursor:pointer;padding:0 6px" id="rpX">✕</span></div>'
+      +(R.done?repReport():'')
+      +'<div class="row">'+order+'<span style="color:#9aa0a6">已實現 '+(realized>=0?'+':'')+realized.toLocaleString()+'元</span></div>'
+      +'<div class="row" style="align-items:flex-start">'+book+'<div style="flex:1;overflow-x:auto">'
+      +(posRows?'<table><tr><th>部位</th><th>方向</th><th>均價</th><th>進場</th><th></th></tr>'+posRows+'</table>':'<span style="color:#9aa0a6">無部位</span>')
+      +'</div></div>'
+      +'<div class="row" style="color:#9aa0a6;font-size:11px;display:block">'+R.log.slice(-4).join('<br>')+'</div>';
+  }
+  const on=(id,fn)=>{const x=el.querySelector('#'+id);if(x)x.onclick=fn;};
+  on('rp0',()=>{const b=R.blind;repStart(R.d.date.replace(/-/g,''),b);});
+  on('rpPlay',()=>{R.timer?(repPause(),repPanelRender()):repPlay();});
+  on('rp1',()=>{repPause();repAdvance(60);repRender();});
+  on('rp5',()=>{repPause();repAdvance(300);repRender();});
+  on('rpEnd',()=>{if(!R.done){repPause();R.done=true;R.mini=false;repFlatAll('手動結束平倉');repRender();}else{repExit();}});
+  on('rpX',()=>{el.style.display='none';});
+  on('rpMin',()=>{R.mini=true;repPanelRender();});
+  on('rpMax',()=>{R.mini=false;repPanelRender();});
+  const sp=el.querySelector('#rpSpd');if(sp)sp.onchange=e=>{R.speed=+e.target.value;if(R.timer){repPause();repPlay();}};
+  const se=el.querySelector('#rpSel');if(se)se.onchange=e=>{R.sel=e.target.value;repPanelRender();};
+  const qe=el.querySelector('#rpQty');if(qe)qe.onchange=e=>{R.qty=Math.max(1,+e.target.value||1);};
+  const q=()=>Math.max(1,+(el.querySelector('#rpQty')||{}).value||R.qty||1);
+  on('rpBuy',()=>repOrder(R.sel,'B',q()));
+  on('rpSell',()=>repOrder(R.sel,'S',q()));
   el.querySelectorAll('[data-flat]').forEach(b=>b.onclick=()=>{const k=b.dataset.flat,p=R.pos[k];if(p)repOrder(k,p.qty>0?'S':'B',Math.abs(p.qty));});
 }
 document.getElementById('repBtn').onclick=async()=>{
