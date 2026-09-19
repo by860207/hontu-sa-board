@@ -69,6 +69,9 @@ const css=getComputedStyle(document.documentElement);
 const C={up:css.getPropertyValue('--up').trim(),dn:css.getPropertyValue('--dn').trim(),
          ink:css.getPropertyValue('--ink').trim(),ink2:css.getPropertyValue('--ink2').trim()};
 const MACOLOR=['#ffe600','#35c8ff','#c65fe8','#ff9100','#8bc34a'];
+// 畫面預設根數: 對齊董事長券商軟體(5分圖量測≈100根/小時標籤7格84根占八成寬)
+// 初始/跳轉/各週期/回放訓練 全部同一個數, 要放大縮小由手勢自理 (2026-09-19 董事長定)
+const BARS=100;
 let PANELS=[{tf:5,ma:[5,10,20,60,40],volh:12},{tf:15,ma:[5,10,20,60,40],volh:12}];
 try{const sv=JSON.parse(localStorage.getItem('txfcloud_panels'));
     if(Array.isArray(sv)&&sv.length===2)PANELS=PANELS.map((p,i)=>Object.assign(p,sv[i]));}catch(e){}
@@ -178,7 +181,7 @@ function doJump(){
   const inp=document.getElementById('jump');
   const t=parseJump(inp.value);
   if(t==null){inp.style.borderColor='#ff3333';setTimeout(()=>inp.style.borderColor='#2a2a2a',900);return;}
-  jumpTo(t,p=>p.tf===1?120:80);                  // 跳過去後顯示的視窗寬
+  jumpTo(t,()=>BARS);                            // 跳過去後顯示的視窗寬
   inp.blur();
 }
 document.getElementById('jumpBtn').onclick=doJump;
@@ -187,7 +190,7 @@ document.getElementById('jump').addEventListener('keydown',e=>{if(e.key==='Enter
 // ═ MA200觸線訊號回放 (2026-09-12 董事長命題) ═
 // 訊號: 1分K低~高包住MA200(與圖上MA200同一條:全K連續SMA200); 訊號後cool根內觸線不算新訊號
 // cool同時=跳轉後兩張圖的視窗根數(董事長定義:冷卻=畫面根數, 一個數字管兩件事)
-const SIG={cool:+(localStorage.getItem('txf_sigcool')||100),mark:null,list:[]};
+const SIG={cool:+(localStorage.getItem('txf_sigcool')||BARS),mark:null,list:[]};
 function scanSignals(){
   const d=getTF(1);
   if(!d||d.ohlc.length<220)return[];
@@ -350,7 +353,7 @@ function setupLongPress(p,div){
         const dx=e.touches[0].clientX-e.touches[1].clientX,
               dy=e.touches[0].clientY-e.touches[1].clientY;
         const d=CACHE[p.tf],n=d?d.labels.length:0;
-        const w=p.win||{size:(p.tf===1?240:120),right:true,endI:n-1};
+        const w=p.win||{size:BARS,right:true,endI:n-1};
         pinch0={d0:Math.hypot(dx,dy),size0:w.size,
                 endI0:w.right?n-1:w.endI,right0:w.right};
       }
@@ -420,7 +423,7 @@ function legFmt(p){return function(name){
 function draw(p){
   const d=getTF(p.tf);if(!d)return;
   const closes=d.ohlc.map(v=>v[1]);
-  const n=d.labels.length, show=p.tf===1?240:120;
+  const n=d.labels.length, show=BARS;
   let startI,endI;
   if(p.win){endI=p.win.right?n-1:Math.min(p.win.endI,n-1);
     startI=Math.max(0,endI-p.win.size+1);}
@@ -518,9 +521,9 @@ function header(){
   el('px').className='px '+(s.chg_vs_vwap>=0?'up':'dn');
   el('sess').textContent=s.sess;
   const age=LIVE?(Date.now()/1000-new Date(LIVE.t.replace(' ','T')).getTime()/1000):9e9;
-  if(R.on){el('ts').textContent='🎬回放 '+repClock()+(R.d&&R.d.synth?'(台指)':'')+' · v21.3';el('ts').style.color='#8bc34a';}
+  if(R.on){el('ts').textContent='🎬回放 '+repClock()+(R.d&&R.d.synth?'(台指)':'')+' · v21.4';el('ts').style.color='#8bc34a';}
   else{el('ts').style.color='';
-  el('ts').textContent=(LIVE?LIVE.t:'')+(age>300?' ⚠資料延遲':'')+(TUN?' ⚡秒級':' · 雲端60秒')+' · v21.3';}
+  el('ts').textContent=(LIVE?LIVE.t:'')+(age>300?' ⚠資料延遲':'')+(TUN?' ⚡秒級':' · 雲端60秒')+' · v21.4';}
   el('vw').textContent=s.vwap_now!=null?s.vwap_now.toLocaleString():'--';
   el('dv').textContent=s.chg_vs_vwap==null?'--':((s.chg_vs_vwap>=0?'+':'')+s.chg_vs_vwap+'點');
   chainTick();
