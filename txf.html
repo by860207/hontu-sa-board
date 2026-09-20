@@ -521,9 +521,9 @@ function header(){
   el('px').className='px '+(s.chg_vs_vwap>=0?'up':'dn');
   el('sess').textContent=s.sess;
   const age=LIVE?(Date.now()/1000-new Date(LIVE.t.replace(' ','T')).getTime()/1000):9e9;
-  if(R.on){el('ts').textContent='🎬回放 '+repClock()+(R.d&&R.d.synth?'(台指)':'')+' · v21.4';el('ts').style.color='#8bc34a';}
+  if(R.on){el('ts').textContent='🎬回放 '+repClock()+(R.d&&R.d.synth?'(台指)':'')+' · v21.5';el('ts').style.color='#8bc34a';}
   else{el('ts').style.color='';
-  el('ts').textContent=(LIVE?LIVE.t:'')+(age>300?' ⚠資料延遲':'')+(TUN?' ⚡秒級':' · 雲端60秒')+' · v21.4';}
+  el('ts').textContent=(LIVE?LIVE.t:'')+(age>300?' ⚠資料延遲':'')+(TUN?' ⚡秒級':' · 雲端60秒')+' · v21.5';}
   el('vw').textContent=s.vwap_now!=null?s.vwap_now.toLocaleString():'--';
   el('dv').textContent=s.chg_vs_vwap==null?'--':((s.chg_vs_vwap>=0?'+':'')+s.chg_vs_vwap+'點');
   chainTick();
@@ -896,9 +896,10 @@ function repPanelRender(){
     return;
   }
   const bk=repBookNow(),stale=bk?(R.cur-bk[0]>60):true;
+  // 券商式排版(董事長0920): 買一與賣一同一列對齊, 左買右賣, 第1檔在最上
   const bookTbl=(snap,title)=>'<div><div style="color:#9aa0a6;font-size:10px">'+title+'</div><table style="font-size:11px">'
-    +[4,3,2,1,0].map(i=>'<tr><td></td><td class="sell">'+(snap[2][i]||'')+'</td><td>'+(snap[3][i]||'')+'</td></tr>').join('')
-    +[0,1,2,3,4].map(i=>'<tr><td class="buy">'+(snap[0][i]||'')+'</td><td></td><td>'+(snap[1][i]||'')+'</td></tr>').join('')+'</table></div>';
+    +'<tr><th style="color:#9aa0a6;font-weight:400">量</th><th class="buy" style="font-weight:400">買</th><th class="sell" style="font-weight:400">賣</th><th style="color:#9aa0a6;font-weight:400">量</th></tr>'
+    +[0,1,2,3,4].map(i=>'<tr><td>'+(snap[1][i]||'')+'</td><td class="buy">'+(snap[0][i]||'')+'</td><td class="sell">'+(snap[2][i]||'')+'</td><td>'+(snap[3][i]||'')+'</td></tr>').join('')+'</table></div>';
   let book='';                                   // 左: 選中的選擇權五檔; 右: 台指期五檔('F', feeder v2.2起錄影才有)
   const so=bk&&R.sel!=='F'?bk[1][R.sel]:null, sf=bk?bk[1]['F']:null;
   if(R.sel!=='F')book+=so?bookTbl(so,R.sel)+(stale?'<div style="color:#ff9100;font-size:10px">五檔>1分鐘未更新→掛下一分鐘開盤</div>':''):'<div style="color:#9aa0a6;font-size:10px">'+R.sel+'無五檔錄影<br>市價=下一分鐘開盤</div>';
@@ -907,7 +908,8 @@ function repPanelRender(){
   const posRows=Object.keys(R.pos).map(k=>{const p=R.pos[k];return '<tr><td>'+(k==='F'?'期貨':k)+'</td><td class="'+(p.qty>0?'buy':'sell')+'">'+(p.qty>0?'多':'空')+Math.abs(p.qty)+'</td><td>@'+p.avg+'</td><td>'+fmtT(p.t)+'</td><td><button class="repbtn" data-flat="'+k+'">平倉</button></td></tr>';}).join('');
   const realized=R.trades.reduce((s,x)=>s+x.pnl,0);
   const ctl='<b id="rpHandle" style="color:#8bc34a;cursor:move;touch-action:none;padding:2px 4px;border:1px dashed #2e4a20;border-radius:4px">✥🎬'+repClock()+'</b> 價'+(R.last==null?'--':R.last)
-    +'<button class="repbtn" id="rpPlay">'+(R.timer?'⏸':'▶')+'</button><button class="repbtn" id="rp1">+1</button><button class="repbtn" id="rp5">+5</button>';
+    +'<button class="repbtn" id="rpPlay">'+(R.timer?'⏸':'▶')+'</button><button class="repbtn" id="rp1">+1</button><button class="repbtn" id="rp5">+5</button>'
+    +'<button class="repbtn" id="rpZm" title="縮小">－</button><button class="repbtn" id="rpZp" title="放大">＋</button>';   // 縮放鈕: 一列模式也有
   const order='<select id="rpSel">'+opts+'</select><input id="rpQty" type="number" min="1" max="20" value="'+(R.qty||1)+'" style="width:40px">'
     +'<button class="repbtn buy" id="rpBuy" style="border-color:#ff3333">買</button><button class="repbtn sell" id="rpSell" style="border-color:#00c853">賣</button>';
   if(R.mini&&!R.done){                            // 縮小: 只剩一條操作列, 不擋圖 (董事長0919要求)
@@ -920,7 +922,7 @@ function repPanelRender(){
       +'<select id="rpSpd">'+[1,5,10,30,60].map(s=>'<option value="'+s+'"'+(s===R.speed?' selected':'')+'>'+s+'x</option>').join('')+'</select>'
       +'<button class="repbtn warn" id="rpEnd">'+(R.done?'退出回放':'結束')+'</button>'
       +(R.done?'':'<button class="repbtn" id="rpMin">縮小</button>')
-      +'<input id="rpZoom" type="range" min="60" max="130" value="'+(R.zoom||100)+'" title="縮放" style="width:60px">'
+      +'<input id="rpZoom" type="range" min="50" max="160" value="'+(R.zoom||100)+'" title="縮放" style="width:60px">'
       +'<span style="cursor:pointer;padding:0 6px" id="rpX">✕</span></div>'
       +(R.done?repReport():'')
       +'<div class="row">'+order+'<span style="color:#9aa0a6">已實現 '+(realized>=0?'+':'')+realized.toLocaleString()+'元</span></div>'
@@ -932,7 +934,11 @@ function repPanelRender(){
   }
   const on=(id,fn)=>{const x=el.querySelector('#'+id);if(x)x.onclick=fn;};
   repDrag(el);
-  const zm=el.querySelector('#rpZoom');if(zm)zm.oninput=e=>{R.zoom=+e.target.value;el.style.zoom=R.zoom/100;try{localStorage.setItem('txf_rep_zoom',R.zoom);}catch(_){}};
+  const setZoom=z=>{R.zoom=Math.max(50,Math.min(160,z));el.style.zoom=R.zoom/100;try{localStorage.setItem('txf_rep_zoom',R.zoom);}catch(_){}
+    const s=el.querySelector('#rpZoom');if(s)s.value=R.zoom;};
+  const zm=el.querySelector('#rpZoom');if(zm)zm.oninput=e=>setZoom(+e.target.value);
+  on('rpZm',()=>setZoom((R.zoom||100)-10));
+  on('rpZp',()=>setZoom((R.zoom||100)+10));
   on('rp0',()=>{const b=R.blind;repStart(R.d.date.replace(/-/g,''),b);});
   on('rpPlay',()=>{R.timer?(repPause(),repPanelRender()):repPlay();});
   on('rp1',()=>{repPause();repAdvance(60);repRender();});
