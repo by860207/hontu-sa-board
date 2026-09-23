@@ -170,11 +170,11 @@ const OKX='https://www.okx.com';
 const css=getComputedStyle(document.documentElement);
 const C={up:css.getPropertyValue('--up').trim(),dn:css.getPropertyValue('--dn').trim(),
          ink:css.getPropertyValue('--ink').trim(),ink2:css.getPropertyValue('--ink2').trim()};
-const MACOLOR=['#ffe600','#35c8ff','#c65fe8','#ff9100'];
+const MACOLOR=['#ffe600','#35c8ff','#c65fe8','#ff9100','#8bc34a'];
 let SYM=SYMS[0];
-let PANELS=[{tf:1,ma:[5,10,20,60],volh:12},{tf:15,ma:[5,10,20,60],volh:12}];
+let PANELS=[{tf:1,ma:[5,10,20,60,200],volh:12},{tf:15,ma:[5,10,20,60,200],volh:12}];
 try{const sv=JSON.parse(localStorage.getItem('crypto_panels'));
-    if(sv&&Array.isArray(sv.p)&&sv.p.length===2){PANELS=PANELS.map((p,i)=>Object.assign(p,sv.p[i]));
+    if(sv&&Array.isArray(sv.p)&&sv.p.length===2){PANELS=PANELS.map((p,i)=>Object.assign(p,sv.p[i]));PANELS.forEach(p=>{while(p.ma.length<5)p.ma.push(200);});
       const s2=SYMS.find(x=>x.s===sv.sym);if(s2)SYM=s2;}}catch(e){}
 function save(){try{localStorage.setItem('crypto_panels',JSON.stringify(
   {sym:SYM.s,p:PANELS.map(p=>({tf:p.tf,ma:p.ma,volh:p.volh}))}));}catch(e){}}
