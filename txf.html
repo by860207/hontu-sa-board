@@ -56,6 +56,7 @@
     <button id="jumpBtn" class="tfbtn" style="padding:3px 10px">跳至</button>
     <button id="sigBtn" class="tfbtn" style="padding:3px 10px;color:#ffe600;border-color:#4a4520">訊號</button>
     <button id="repBtn" class="tfbtn" style="padding:3px 10px;color:#8bc34a;border-color:#2e4a20">回放</button>
+    <button id="fillBtn" class="tfbtn" style="padding:3px 10px;color:#29b6f6;border-color:#1c3a4a">成交</button>
   </span>
   <a href="opt.html" style="margin-left:0;color:#ffe600">模擬倉</a>
   <a href="index.html">← 訊號看板</a>
@@ -79,7 +80,7 @@ PANELS.forEach(p=>{while(p.ma.length<5)p.ma.push(40);});   // v21: 第5條均線
 function save(){try{localStorage.setItem('txfcloud_panels',JSON.stringify(
   PANELS.map(p=>({tf:p.tf,ma:p.ma,volh:p.volh}))));}catch(e){}}
 
-let HIST=null,LIVE=null,M1=[],FILLS=null;   // M1: [[ts,o,h,l,c,v,pv],...] FILLS: 實際成交紀錄
+let HIST=null,LIVE=null,M1=[],FILLS=null,FSEL=null;   // M1: [[ts,o,h,l,c,v,pv],...] FILLS: 實際成交紀錄 FSEL: 選中的交易日(YYYYMMDD), null=不顯示
 const CACHE={};                  // tf -> {labels,ohlc,vol,stats}
 const R={on:false,blind:false,d:null,day0:null,bars:new Map(),marks:[],liveHold:null};  // v21 回放練習狀態
 
@@ -229,7 +230,8 @@ function renderSigPanel(){
 }
 document.getElementById('sigBtn').onclick=()=>{
   const el=document.getElementById('sigPanel');
-  if(el.style.display==='block'){el.style.display='none';return;}
+  if(el.style.display==='block'&&el.dataset.m!=='fill'){el.style.display='none';return;}
+  el.dataset.m='sig';
   el.style.top=(document.querySelector('.hdr').offsetHeight+6)+'px';
   renderSigPanel();el.style.display='block';
 };
@@ -470,7 +472,8 @@ function draw(p){
       {name:p.tf+'分K',type:'candlestick',data:d.ohlc,
        markPoint:{silent:false,animation:false,z:20,data:(function(){
          const pts=[];
-         const FL=R.on?R.marks:FILLS;            // 回放: 畫練習單, 不畫實倉
+         // 回放: 畫練習單; 平時: 實倉成交只在「成交」選日後才畫 (v22 董事長 0929)
+         const FL=R.on?R.marks:(FSEL&&FILLS?FILLS.filter(x=>x.d===FSEL):null);
          if(FL)for(const f2 of FL){
            const b2=Math.floor(f2.t/(p.tf*60))*(p.tf*60);
            let lo=0,hi=d.ts.length-1,ix=-1;
@@ -478,11 +481,18 @@ function draw(p){
              if(d.ts[mid]===b2){ix=mid;break;}
              if(d.ts[mid]<b2)lo=mid+1;else hi=mid-1;}
            if(ix<0)continue;
+           if(f2.bs==='X'){                        // 結算日沒主動平倉: 紫色◆結 標在結算前最後一根
+             pts.push({coord:[ix,d.ohlc[ix][3]],symbol:'diamond',symbolSize:11,symbolOffset:[0,-12],
+               name:'結算到期(沒主動平) '+pidName(f2.pid)+' x'+(f2.qty==null?'?':f2.qty),
+               itemStyle:{color:'#c65fe8'},
+               label:{show:true,formatter:'結',position:'top',fontSize:9,fontWeight:700,color:'#c65fe8'}});
+             continue;}
            const isB=f2.bs==='B';
            pts.push({coord:[ix,isB?d.ohlc[ix][2]:d.ohlc[ix][3]],
              symbol:'arrow',symbolSize:9,symbolRotate:isB?0:180,
              symbolOffset:[0,isB?11:-11],
-             name:(isB?'買 ':'賣 ')+f2.pid+' @'+f2.price+' x'+f2.qty,
+             name:(isB?'買 ':'賣 ')+(R.on?f2.pid:pidName(f2.pid))+' @'+(f2.price==null?'?':f2.price)+' x'+(f2.qty==null?'?':f2.qty)
+               +(R.on?'':' '+new Date(f2.t*1000).toTimeString().slice(0,8)),
              itemStyle:{color:isB?'#29b6f6':'#f0b429'},
              label:{show:true,formatter:isB?'B':'S',position:isB?'bottom':'top',
                     fontSize:9,fontWeight:700,color:isB?'#29b6f6':'#f0b429'}});
@@ -521,9 +531,9 @@ function header(){
   el('px').className='px '+(s.chg_vs_vwap>=0?'up':'dn');
   el('sess').textContent=s.sess;
   const age=LIVE?(Date.now()/1000-new Date(LIVE.t.replace(' ','T')).getTime()/1000):9e9;
-  if(R.on){el('ts').textContent='🎬回放 '+repClock()+(R.d&&R.d.synth?'(台指)':'')+' · v21.5';el('ts').style.color='#8bc34a';}
+  if(R.on){el('ts').textContent='🎬回放 '+repClock()+(R.d&&R.d.synth?'(台指)':'')+' · v22';el('ts').style.color='#8bc34a';}
   else{el('ts').style.color='';
-  el('ts').textContent=(LIVE?LIVE.t:'')+(age>300?' ⚠資料延遲':'')+(TUN?' ⚡秒級':' · 雲端60秒')+' · v21.5';}
+  el('ts').textContent=(LIVE?LIVE.t:'')+(age>300?' ⚠資料延遲':'')+(TUN?' ⚡秒級':' · 雲端60秒')+' · v22';}
   el('vw').textContent=s.vwap_now!=null?s.vwap_now.toLocaleString():'--';
   el('dv').textContent=s.chg_vs_vwap==null?'--':((s.chg_vs_vwap>=0?'+':'')+s.chg_vs_vwap+'點');
   chainTick();
@@ -698,6 +708,48 @@ async function loadFills(){
   try{const r=await fetch(RAW+'fills.json?ts='+Math.floor(Date.now()/300000));
     if(r.ok){FILLS=await r.json();PANELS.forEach(draw);}}catch(e){}
 }
+// ═ 實倉成交選日顯示 v22 (2026-09-29 董事長): 平時看盤不畫, 按「成交」選日才畫該交易日(日盤+當晚夜盤)進出 ═
+function pidName(p){                             // TXY47950U6 -> F4 47950P
+  const m=/^TX(.)(\d+)([A-X])\d$/.exec(p||'');
+  if(!m)return (p&&p!=='?')?p:'(商品未記錄)';
+  const w={'1':'W1','2':'W2','O':'月','4':'W4','5':'W5','U':'F1','V':'F2','X':'F3','Y':'F4','Z':'F5'}[m[1]]||m[1];
+  return w+' '+m[2]+(m[3]<'M'?'C':'P');
+}
+function fillDays(){
+  const g=new Map();
+  for(const f of FILLS||[]){if(!f.d)continue;
+    const x=g.get(f.d)||{n:0,x:0};if(f.bs==='X')x.x++;else x.n++;g.set(f.d,x);}
+  return [...g.entries()].sort((a,b)=>a[0]<b[0]?1:-1);
+}
+function renderFillPanel(){
+  const el=document.getElementById('sigPanel');
+  const wd=d=>'日一二三四五六'[new Date(+d.slice(0,4),+d.slice(4,6)-1,+d.slice(6)).getDay()];
+  const days=fillDays();
+  el.innerHTML='<div class="sighd">選日看實際進出｜B買 S賣 <span style="color:#c65fe8">◆結</span>=結算沒平'
+    +'<span id="fillX" style="margin-left:auto;cursor:pointer;padding:0 5px">✕</span></div>'
+    +'<div class="sigitem" data-d="" style="color:#9aa0a6">'+(FSEL?'◯ 不顯示(回平時看盤)':'● 目前不顯示')+'</div>'
+    +(days.length?days.map(([d,x])=>'<div class="sigitem" data-d="'+d+'"'+(d===FSEL?' style="background:#1c2a33"':'')+'>'
+      +d.slice(4,6)+'/'+d.slice(6)+'('+wd(d)+')｜'+(x.n?x.n+'筆':'')
+      +(x.x?' <span style="color:#c65fe8">◆結'+x.x+'</span>':'')+'</div>').join('')
+     :'<div class="sigitem" style="cursor:default;color:#9aa0a6">成交紀錄載入中或沒有資料</div>');
+  el.querySelector('#fillX').onclick=()=>{el.style.display='none';};
+  el.querySelectorAll('.sigitem[data-d]').forEach(it=>it.onclick=()=>{
+    fillSel(it.dataset.d||null);el.style.display='none';});
+}
+function fillSel(d){
+  FSEL=d;const b=document.getElementById('fillBtn');
+  b.textContent=d?'成交 '+d.slice(4,6)+'/'+d.slice(6):'成交';b.classList.toggle('on',!!d);
+  if(!d){PANELS.forEach(draw);return;}
+  const fs=(FILLS||[]).filter(x=>x.d===d);
+  jumpTo(fs.length?fs[0].t:Date.now()/1000,()=>BARS);   // 跳到當日第一筆, 其餘左右拖
+}
+document.getElementById('fillBtn').onclick=()=>{
+  const el=document.getElementById('sigPanel');
+  if(el.style.display==='block'&&el.dataset.m==='fill'){el.style.display='none';return;}
+  el.dataset.m='fill';
+  el.style.top=(document.querySelector('.hdr').offsetHeight+6)+'px';
+  renderFillPanel();el.style.display='block';
+};
 // ═ 回放練習模式 v21 (2026-09-19 董事長核准「做」) ═
 // 選日或盲抽 → 該日08:45起像看盤一樣逐5秒走(之前的K照常顯示, 之後的一根都看不到)
 // 下單=市價: 選擇權吃「當時真實五檔」(有錄影的日子; 五檔超過1分鐘沒更新則改掛下一分鐘開盤), 期貨=最新價±1tick
