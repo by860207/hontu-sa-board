@@ -84,6 +84,21 @@ let HIST=null,LIVE=null,M1=[],FILLS=null,FSEL=null;   // M1: [[ts,o,h,l,c,v,pv],
 const CACHE={};                  // tf -> {labels,ohlc,vol,stats}
 const R={on:false,blind:false,d:null,day0:null,bars:new Map(),marks:[],liveHold:null};  // v21 回放練習狀態
 
+// ═ v22.1 平移順暢化(2026-10-05 董事長: 1分K移動卡卡的) ═
+// 1分K有6.9萬根: 每次資料更新都要全量合流+5條均線+整張重畫(手機上數百ms)。手指正在平移/縮放時先擱著, 放手後補畫
+const IA={t:0};      // t=最後一次觸控移動/縮放事件的時間
+function iaBusy(){return Date.now()-IA.t<350;}   // 只看「最近350ms有沒有在動」, 不看手指是否按著(避免漏掉touchend時永遠不更新)
+let DIRTY=false,dirtyT=null;
+function refreshAll(){
+  if(iaBusy()){DIRTY=true;
+    if(!dirtyT)dirtyT=setInterval(()=>{
+      if(iaBusy())return;
+      clearInterval(dirtyT);dirtyT=null;
+      if(DIRTY){DIRTY=false;mergeBars();PANELS.forEach(draw);header();}},150);
+    return;}
+  DIRTY=false;mergeBars();PANELS.forEach(draw);header();
+}
+
 // ═ 資料合流 + 週期合成(頁面端) ═
 function mergeBars(){
   const m=new Map();
@@ -258,15 +273,23 @@ PANELS.forEach((p,i)=>{
   p.chart=echarts.init(div);p.win=null;p.bar=bar;
   // 記錄目前視窗(根數+是否貼右緣); 刷新時原樣還原, 不會自己跳回全部K
   p.chart.on('datazoom',()=>{
+    IA.t=Date.now();
     const d=CACHE[p.tf];if(!d)return;
-    const o=p.chart.getOption().dataZoom[0];if(!o)return;
     const n=d.labels.length;
-    let s,e2;
-    if(o.startValue!=null&&o.endValue!=null){s=o.startValue;e2=o.endValue;}
-    else{s=Math.round((o.start||0)/100*(n-1));e2=Math.round((o.end==null?100:o.end)/100*(n-1));}
+    let s=null,e2=null;
+    try{const vr=p.chart.getModel().getComponent('dataZoom',0).getValueRange();   // v22.1: 直接讀視窗, 不深拷貝整包option
+      s=Math.round(vr[0]);e2=Math.round(vr[1]);}catch(_){s=null;}
+    if(s==null||e2==null||isNaN(s)||isNaN(e2)){                                    // 保險: 讀不到才走舊路
+      const o=p.chart.getOption().dataZoom[0];if(!o)return;
+      if(o.startValue!=null&&o.endValue!=null){s=o.startValue;e2=o.endValue;}
+      else{s=Math.round((o.start||0)/100*(n-1));e2=Math.round((o.end==null?100:o.end)/100*(n-1));}
+    }
     p.win={size:Math.max(5,e2-s+1),right:e2>=n-2,endI:e2};
-    p.maVals=maValsAt(p,d,Math.min(e2,d.ohlc.length-1));   // 圖例帶值跟著畫面右緣
-    p.chart.setOption({legend:{formatter:legFmt(p)}});
+    clearTimeout(p._legT);                                   // 圖例帶值跟著畫面右緣: 停手150ms後才更新一次
+    p._legT=setTimeout(()=>{
+      const d2=CACHE[p.tf];if(!d2||!p.win)return;
+      p.maVals=maValsAt(p,d2,Math.min(p.win.endI,d2.ohlc.length-1));
+      p.chart.setOption({legend:{formatter:legFmt(p)}});},150);
   });
   bar.querySelectorAll('.tfbtn').forEach(b=>b.onclick=()=>{
     p.tf=+b.dataset.tf;p.win=null;save();
@@ -294,7 +317,7 @@ const TOUCH=('ontouchstart' in window);
 // 十字標規格(董事長定): 單指原地長按3秒→出現; 再長按3秒→消失(開關式)
 // 縮放/平移手勢不會誤觸發; 十字標開著時: 單指拖=移動十字標, 雙指捏=縮放(自製pinch)
 function setupLongPress(p,div){
-  let timer=null,sx=0,sy=0,pinch0=null,tipDrag=null;
+  let timer=null,sx=0,sy=0,pinch0=null,tipDrag=null,moved=false;
   const HOLD=1000;
   const pos=(t)=>{const r=div.getBoundingClientRect();return{x:t.clientX-r.left,y:t.clientY-r.top};};
   function tipEl(){
@@ -341,9 +364,10 @@ function setupLongPress(p,div){
       return;
     }
     if(e.touches.length===1){
-      const t=e.touches[0];sx=t.clientX;sy=t.clientY;pinch0=null;
+      const t=e.touches[0];sx=t.clientX;sy=t.clientY;pinch0=null;moved=false;
       clearTimeout(timer);
       timer=setTimeout(()=>{
+        if(moved)return;
         const r=div.getBoundingClientRect();
         setCross(!p.cross);
         if(p.cross)moveCross(sx-r.left,sy-r.top);
@@ -362,6 +386,7 @@ function setupLongPress(p,div){
     }
   },{passive:true});
   div.addEventListener('touchmove',e=>{
+    IA.t=Date.now();
     if(tipDrag&&e.touches.length===1){
       e.preventDefault();                                 // 拖框框: 放到哪停到哪
       const q=pos(e.touches[0]);
@@ -373,13 +398,8 @@ function setupLongPress(p,div){
     if(e.touches.length===1){
       const t=e.touches[0];
       if(Math.abs(t.clientX-sx)>12||Math.abs(t.clientY-sy)>12){
-        clearTimeout(timer);
-        if(!p.cross){                            // v20: 沒十字標時, 平移不累積秒數
-          sx=t.clientX;sy=t.clientY;             // 重新錨定, 靜止滿HOLD才算長按
-          timer=setTimeout(()=>{const r=div.getBoundingClientRect();
-            setCross(true);moveCross(sx-r.left,sy-r.top);},HOLD);
-        }
-      }
+        clearTimeout(timer);moved=true;          // v22.1(董事長1005): 移動過=平移手勢, 這次觸控不再計秒;
+      }                                          //   只有「按下後原地不動滿HOLD」才開/關十字標(v20是停下來又重新計秒→平移中途停頓會誤觸)
       if(p.cross){e.preventDefault();const q=pos(t);moveCross(q.x,q.y);}
     }else if(p.cross&&pinch0&&e.touches.length===2){
       e.preventDefault();                                 // 十字標開著也能雙指縮放
@@ -403,7 +423,7 @@ PANELS.forEach((p,i)=>{if(TOUCH)setupLongPress(p,document.getElementById('ch'+i)
 
 function sma(a,n){const r=Array(a.length).fill(null);if(!n||n<1)return r;
   let s=0;for(let i=0;i<a.length;i++){s+=a[i];if(i>=n)s-=a[i-n];
-    if(i>=n-1)r[i]=+(s/n).toFixed(1);}return r;}
+    if(i>=n-1)r[i]=Math.round(s/n*10)/10;}return r;}
 
 // ═ 圖例帶值: 圖頂那排均線名字後面直接顯示「畫面右緣K棒」的均線值 (2026-09-13 董事長命題) ═
 // 看盤=最新K的值; 回放/拖到歷史位置=該時點的值(datazoom時重算)
@@ -467,7 +487,7 @@ function draw(p){
                throttle:40,zoomOnMouseWheel:true,moveOnMouseMove:true},
               {type:'slider',xAxisIndex:[0,1],bottom:2,height:12,borderColor:'#2a2a2a',
                backgroundColor:'#0d0d0d',fillerColor:'rgba(41,182,246,.18)',
-               textStyle:{color:C.ink2,fontSize:10},startValue:startI,endValue:endI}],
+               showDataShadow:false,textStyle:{color:C.ink2,fontSize:10},startValue:startI,endValue:endI}],
     series:[
       {name:p.tf+'分K',type:'candlestick',data:d.ohlc,
        markPoint:{silent:false,animation:false,z:20,data:(function(){
@@ -531,16 +551,16 @@ function header(){
   el('px').className='px '+(s.chg_vs_vwap>=0?'up':'dn');
   el('sess').textContent=s.sess;
   const age=LIVE?(Date.now()/1000-new Date(LIVE.t.replace(' ','T')).getTime()/1000):9e9;
-  if(R.on){el('ts').textContent='🎬回放 '+repClock()+(R.d&&R.d.synth?'(台指)':'')+' · v22';el('ts').style.color='#8bc34a';}
+  if(R.on){el('ts').textContent='🎬回放 '+repClock()+(R.d&&R.d.synth?'(台指)':'')+' · v22.1';el('ts').style.color='#8bc34a';}
   else{el('ts').style.color='';
-  el('ts').textContent=(LIVE?LIVE.t:'')+(age>300?' ⚠資料延遲':'')+(TUN?' ⚡秒級':' · 雲端60秒')+' · v22';}
+  el('ts').textContent=(LIVE?LIVE.t:'')+(age>300?' ⚠資料延遲':'')+(TUN?' ⚡秒級':' · 雲端60秒')+' · v22.1';}
   el('vw').textContent=s.vwap_now!=null?s.vwap_now.toLocaleString():'--';
   el('dv').textContent=s.chg_vs_vwap==null?'--':((s.chg_vs_vwap>=0?'+':'')+s.chg_vs_vwap+'點');
   chainTick();
 }
 async function loadHist(){
   try{const r=await fetch(RAW+'hist.json?ts='+Math.floor(Date.now()/600000));
-    if(r.ok){HIST=await r.json();R.hdays=null;mergeBars();PANELS.forEach(draw);header();}}
+    if(r.ok){HIST=await r.json();R.hdays=null;refreshAll();}}
   catch(e){}
 }
 function gotLive(j){
@@ -550,7 +570,7 @@ function gotLive(j){
     if(!tunTimer)tunTimer=setInterval(tunnelTick,2000);
     tunnelTick();impTick();}
   if(TUN){return;}                    // 秒級模式中: 雲端資料較舊, 只取tun不覆蓋
-  LIVE=j;mergeBars();PANELS.forEach(draw);header();
+  LIVE=j;refreshAll();
 }
 async function loadLive(){
   // 分鐘檔名: live_HHMM.json 每分鐘新URL → CDN必定給最新; 往前退最多5分鐘, 全miss才用快取版live.json
@@ -574,7 +594,7 @@ async function tunnelTick(){
     const r=await fetch(TUN+'/m1',{signal:AbortSignal.timeout(4000)});
     if(!r.ok)throw 0;
     const j=await r.json();
-    if(j&&j.bars){LIVE=j;mergeBars();PANELS.forEach(draw);header();tunFail=0;}
+    if(j&&j.bars){LIVE=j;refreshAll();tunFail=0;}
   }catch(e){
     if(++tunFail>=5){TUN=null;}   // 隧道死了→退回雲端60秒; live.json帶回新網址會自動歸隊
   }
