@@ -124,6 +124,7 @@ function lbl(ts){const d=new Date(ts*1000);
     const dd=Math.round((new Date(d.getFullYear(),d.getMonth(),d.getDate())-R.day0)/86400000);
     return (dd===0?'當日':('前'+(-dd)+'日'))+' '+pad(d.getHours())+':'+pad(d.getMinutes());}
   return pad(d.getMonth()+1)+'-'+pad(d.getDate())+' '+pad(d.getHours())+':'+pad(d.getMinutes());}
+// v22.2(2026-10-05 董事長核): K棒時間標籤改券商慣例=「結束時間」(券商20:50那根=這裡原本標20:45那根); d.ts 內部仍是開始時間
 function getTF(tf){
   if(CACHE[tf])return CACHE[tf];
   if(!M1.length)return null;
@@ -142,7 +143,7 @@ function getTF(tf){
   for(const k of ks){
     const s=sessOf(k[0]);
     if(!s)continue;
-    labels.push(lbl(k[0]));ohlc.push([k[1],k[4],k[3],k[2]]);vol.push(k[5]);tsArr.push(k[0]);
+    labels.push(lbl(k[0]+tf*60));ohlc.push([k[1],k[4],k[3],k[2]]);vol.push(k[5]);tsArr.push(k[0]);
     const sid=s[1];
     if(!cum[sid])cum[sid]=[0,0];
     cum[sid][0]+=k[6];cum[sid][1]+=k[5];
@@ -197,7 +198,7 @@ function doJump(){
   const inp=document.getElementById('jump');
   const t=parseJump(inp.value);
   if(t==null){inp.style.borderColor='#ff3333';setTimeout(()=>inp.style.borderColor='#2a2a2a',900);return;}
-  jumpTo(t,()=>BARS);                            // 跳過去後顯示的視窗寬
+  jumpTo(t-1,()=>BARS);                          // 輸入的是K棒標籤(結束時間)→找「在那一刻之前收完的那根」; 跳過去後顯示的視窗寬
   inp.blur();
 }
 document.getElementById('jumpBtn').onclick=doJump;
@@ -231,7 +232,7 @@ function renderSigPanel(){
     +'<input id="sigCool" type="number" min="10" max="500" value="'+SIG.cool+'">根'
     +'<span id="sigX" style="margin-left:auto;cursor:pointer;padding:0 5px">✕</span></div>'
     +(SIG.list.length?SIG.list.map((s,i)=>'<div class="sigitem" data-i="'+i+'">'
-      +lbl(s.t)+'｜'+s.px.toLocaleString()
+      +lbl(s.t+60)+'｜'+s.px.toLocaleString()
       +'｜<span style="color:'+(s.dir>0?'#ff3333':'#00c853')+'">'+(s.dir>0?'上踩':'下碰')+'</span></div>').join('')
      :'<div class="sigitem" style="cursor:default;color:#9aa0a6">資料不足或無訊號</div>');
   el.querySelector('#sigX').onclick=()=>{el.style.display='none';};
@@ -551,9 +552,9 @@ function header(){
   el('px').className='px '+(s.chg_vs_vwap>=0?'up':'dn');
   el('sess').textContent=s.sess;
   const age=LIVE?(Date.now()/1000-new Date(LIVE.t.replace(' ','T')).getTime()/1000):9e9;
-  if(R.on){el('ts').textContent='🎬回放 '+repClock()+(R.d&&R.d.synth?'(台指)':'')+' · v22.1';el('ts').style.color='#8bc34a';}
+  if(R.on){el('ts').textContent='🎬回放 '+repClock()+(R.d&&R.d.synth?'(台指)':'')+' · v22.2';el('ts').style.color='#8bc34a';}
   else{el('ts').style.color='';
-  el('ts').textContent=(LIVE?LIVE.t:'')+(age>300?' ⚠資料延遲':'')+(TUN?' ⚡秒級':' · 雲端60秒')+' · v22.1';}
+  el('ts').textContent=(LIVE?LIVE.t:'')+(age>300?' ⚠資料延遲':'')+(TUN?' ⚡秒級':' · 雲端60秒')+' · v22.2';}
   el('vw').textContent=s.vwap_now!=null?s.vwap_now.toLocaleString():'--';
   el('dv').textContent=s.chg_vs_vwap==null?'--':((s.chg_vs_vwap>=0?'+':'')+s.chg_vs_vwap+'點');
   chainTick();
@@ -702,7 +703,7 @@ function chainTick(){
       if(againstSlope)tx+='·護線';}
     else{tx='鏈｜黏線'+b+'分';col='#6b7075';if(againstSlope)tx+='·護線';}
     if(!inWin)tx+='·時段外';
-    tip='觸線'+lbl(tail[ev.i][0])+' 從'+(s>0?'上方':'下方')+'來｜插穿'+Math.round(pen)
+    tip='觸線'+lbl(tail[ev.i][0]+60)+' 從'+(s>0?'上方':'下方')+'來｜插穿'+Math.round(pen)
       +'點 推回'+Math.round(ret)+'點｜乾淨'+(clean>=120?'120+':clean)+'分'
       +'｜MA200斜率'+(slope>0?'+':'')+slope+'/hr'+(againstSlope?'(陡坡護線62%彈)':'')
       +'｜黏線≥8分未破只剩39%會穿';
