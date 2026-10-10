@@ -119,14 +119,15 @@ function etOff(ts){
   v=Math.round((etSec-Math.floor(ts/60)*60)/900)*900;ETOFF.set(k,v);return v;
 }
 function etInfo(ts){const e=ts+etOff(ts);const d=Math.floor(e/86400);return{hm:Math.floor((e-d*86400)/60),wd:(d+4)%7,day:d};}
+// 只畫美東 04:00~17:00 (盤前/正規盤/盤後): 實測 Bitget 指數價這段跟 NQ 期貨 1分變動相關 0.99;
+// 夜間 18:00~04:00 它幾乎不動(|變動|中位 0.27 vs NQ 2.75)、週五 17:00 後是合成漂移 → 不畫, 免得像週六早上那種「一條直線往上爬」的假圖
 function sessOf(ts){  // 回傳 [種類,錨字串] 或 null
   const et=etInfo(ts);
-  if(et.wd===0||et.wd===6)return null;         // 美東週六日: 永續還在動但不畫
-  if(et.hm>=570&&et.hm<960)return['D',et.day+'D'];
-  if(et.hm>=960)return['N',et.day+'N'];
-  const p=etInfo(ts-86400);
-  if(p.wd===0||p.wd===6)return['N',et.day+'P']; // 週一盤前(美東00:00~09:30): 自成一節
-  return['N',p.day+'N'];
+  if(et.wd===0||et.wd===6)return null;
+  if(et.hm>=570&&et.hm<960)return['D',et.day+'D'];     // 正規盤 09:30~16:00
+  if(et.hm>=240&&et.hm<570)return['N',et.day+'P'];     // 盤前 04:00~09:30 自成一節
+  if(et.hm>=960&&et.hm<1020)return['N',et.day+'A'];    // 盤後 16:00~17:00 自成一節
+  return null;
 }
 function pad(n){return (n<10?'0':'')+n;}
 function lbl(ts){const d=new Date(ts*1000);
@@ -165,10 +166,10 @@ function getTF(tf){
   }
   const vD=vwaps.map(x=>x.kind==='D'?x.vw:null), vN=vwaps.map(x=>x.kind==='N'?x.vw:null);
   const lastC=ohlc.length?ohlc[ohlc.length-1][1]:null;
-  const st={price:lastC,time:LIVE?LIVE.t:'',sess:lastSess==='D'?'美股正規盤':'盤外(指數延續)',
+  const st={price:lastC,time:LIVE?LIVE.t:'',sess:lastSess==='D'?'美股正規盤':'盤前/盤後',
     vwap_now:lastVwap,bar_i:lastBarI,
     chg_vs_vwap:(lastVwap!=null&&lastC!=null)?+(lastC-lastVwap).toFixed(1):null,
-    vwap_other:otherVwap,other_lbl:otherSess==='D'?'正規盤':'盤外'};
+    vwap_other:otherVwap,other_lbl:otherSess==='D'?'正規盤':'盤前後'};
   CACHE[tf]={labels:labels,ohlc:ohlc,vol:vol,vwapD:vD,vwapN:vN,stats:st,ts:tsArr};
   return CACHE[tf];
 }
@@ -563,7 +564,7 @@ function header(){
   el('sess').textContent=s.sess;
   const age=LIVE?(Date.now()/1000-new Date(LIVE.t.replace(' ','T')).getTime()/1000):9e9;
   el('ts').style.color='';
-  el('ts').textContent=(LIVE?LIVE.t:'')+(age>300?' ⚠資料延遲':'')+(TUN?' ⚡秒級':' · 等家裡電腦隧道')+' · us v2';
+  el('ts').textContent=(LIVE?LIVE.t:'')+(age>300?' ⚠資料延遲':'')+(TUN?' ⚡秒級':' · 等家裡電腦隧道')+' · us v2.1';
   el('vw').textContent=s.vwap_now!=null?s.vwap_now.toFixed(1):'--';
   el('dv').textContent=s.chg_vs_vwap==null?'--':((s.chg_vs_vwap>=0?'+':'')+s.chg_vs_vwap.toFixed(1)+'點');
 }
