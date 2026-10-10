@@ -1,5 +1,5 @@
 <!doctype html><html lang="zh-Hant"><head><meta charset="utf-8">
-<title>美股QQQ走勢圖(雲端)</title>
+<title>美股納指100走勢圖(雲端)</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
 <style>
@@ -49,14 +49,15 @@
 <div class="hdr">
   <span class="px" id="px">--</span><span class="s" id="sess"></span>
   <span class="s">本節均價線 <span id="vw">--</span>（<span id="dv">--</span>）</span>
-  <span class="s" style="color:#ffe600">QQQ 那斯達克100 ETF</span>
+  <span class="s" style="color:#ffe600">納指100(Bitget指數價·量=QQQ)</span>
   <span class="s" id="ts">載入中…</span>
   <span style="display:flex;gap:4px;align-items:center">
     <input id="jump" placeholder="09021005" inputmode="numeric" style="width:110px;background:#1a1a1a;color:var(--ink);border:1px solid #2a2a2a;border-radius:5px;padding:3px 6px;font-size:13px;font-family:inherit">
     <button id="jumpBtn" class="tfbtn" style="padding:3px 10px">跳至</button>
     <button id="sigBtn" class="tfbtn" style="padding:3px 10px;color:#ffe600;border-color:#4a4520">訊號</button>
   </span>
-  <select class="mkt" onchange="location.href=this.value"><option value="txf.html">台指</option><option value="us.html" selected>美股QQQ</option></select>
+  <select class="mkt" onchange="location.href=this.value"><option value="txf.html">台指</option><option value="us.html" selected>美股納指100</option></select>
+
 </div>
 <div id="sigPanel"></div>
 <div id="panels"></div>
@@ -157,16 +158,16 @@ function getTF(tf){
     if(!cum[sid])cum[sid]=[0,0];
     cum[sid][0]+=k[6];cum[sid][1]+=k[5];
     barCnt[sid]=(barCnt[sid]||0)+1;
-    const vw=cum[sid][1]>0?+(cum[sid][0]/cum[sid][1]).toFixed(2):null;
+    const vw=cum[sid][1]>0?+(cum[sid][0]/cum[sid][1]).toFixed(1):null;
     vwaps.push({kind:s[0],vw:vw});
     if(lastSess&&lastSess!==s[0]){otherVwap=lastVwap;otherSess=lastSess;}
     lastSess=s[0];lastVwap=vw;lastBarI=barCnt[sid];
   }
   const vD=vwaps.map(x=>x.kind==='D'?x.vw:null), vN=vwaps.map(x=>x.kind==='N'?x.vw:null);
   const lastC=ohlc.length?ohlc[ohlc.length-1][1]:null;
-  const st={price:lastC,time:LIVE?LIVE.t:'',sess:lastSess==='D'?'美股正規盤':'盤外(永續)',
+  const st={price:lastC,time:LIVE?LIVE.t:'',sess:lastSess==='D'?'美股正規盤':'盤外(指數延續)',
     vwap_now:lastVwap,bar_i:lastBarI,
-    chg_vs_vwap:(lastVwap!=null&&lastC!=null)?+(lastC-lastVwap).toFixed(2):null,
+    chg_vs_vwap:(lastVwap!=null&&lastC!=null)?+(lastC-lastVwap).toFixed(1):null,
     vwap_other:otherVwap,other_lbl:otherSess==='D'?'正規盤':'盤外'};
   CACHE[tf]={labels:labels,ohlc:ohlc,vol:vol,vwapD:vD,vwapN:vN,stats:st,ts:tsArr};
   return CACHE[tf];
@@ -241,7 +242,7 @@ function renderSigPanel(){
     +'<input id="sigCool" type="number" min="10" max="500" value="'+SIG.cool+'">根'
     +'<span id="sigX" style="margin-left:auto;cursor:pointer;padding:0 5px">✕</span></div>'
     +(SIG.list.length?SIG.list.map((s,i)=>'<div class="sigitem" data-i="'+i+'">'
-      +lbl(s.t+60)+'｜'+s.px.toFixed(2)
+      +lbl(s.t+60)+'｜'+s.px.toFixed(1)
       +'｜<span style="color:'+(s.dir>0?'#ff3333':'#00c853')+'">'+(s.dir>0?'上踩':'下碰')+'</span></div>').join('')
      :'<div class="sigitem" style="cursor:default;color:#9aa0a6">資料不足或無訊號</div>');
   el.querySelector('#sigX').onclick=()=>{el.style.display='none';};
@@ -433,7 +434,7 @@ PANELS.forEach((p,i)=>{if(TOUCH)setupLongPress(p,document.getElementById('ch'+i)
 
 function sma(a,n){const r=Array(a.length).fill(null);if(!n||n<1)return r;
   let s=0;for(let i=0;i<a.length;i++){s+=a[i];if(i>=n)s-=a[i-n];
-    if(i>=n-1)r[i]=Math.round(s/n*100)/100;}return r;}
+    if(i>=n-1)r[i]=Math.round(s/n*10)/10;}return r;}
 
 // ═ 圖例帶值: 圖頂那排均線名字後面直接顯示「畫面右緣K棒」的均線值 (2026-09-13 董事長命題) ═
 // 看盤=最新K的值; 回放/拖到歷史位置=該時點的值(datazoom時重算)
@@ -442,7 +443,7 @@ function maValsAt(p,d,endI){
   for(const m of p.ma){
     if(!m)continue;
     if(endI>=m-1){let s=0;for(let i=endI-m+1;i<=endI;i++)s+=d.ohlc[i][1];
-      o['MA'+m]=+(s/m).toFixed(2);}
+      o['MA'+m]=+(s/m).toFixed(1);}
     else o['MA'+m]=null;
   }
   return o;
@@ -557,18 +558,18 @@ function header(){
   const d=getTF(PANELS[0].tf)||getTF(PANELS[1].tf);
   if(!d)return;
   const s=d.stats,el=(i)=>document.getElementById(i);
-  el('px').textContent=s.price!=null?s.price.toFixed(2):'--';
+  el('px').textContent=s.price!=null?s.price.toFixed(1):'--';
   el('px').className='px '+(s.chg_vs_vwap>=0?'up':'dn');
   el('sess').textContent=s.sess;
   const age=LIVE?(Date.now()/1000-new Date(LIVE.t.replace(' ','T')).getTime()/1000):9e9;
   el('ts').style.color='';
-  el('ts').textContent=(LIVE?LIVE.t:'')+(age>300?' ⚠資料延遲':'')+(TUN?' ⚡秒級':' · 等家裡電腦隧道')+' · us v1';
-  el('vw').textContent=s.vwap_now!=null?s.vwap_now.toFixed(2):'--';
-  el('dv').textContent=s.chg_vs_vwap==null?'--':((s.chg_vs_vwap>=0?'+':'')+s.chg_vs_vwap.toFixed(2));
+  el('ts').textContent=(LIVE?LIVE.t:'')+(age>300?' ⚠資料延遲':'')+(TUN?' ⚡秒級':' · 等家裡電腦隧道')+' · us v2';
+  el('vw').textContent=s.vwap_now!=null?s.vwap_now.toFixed(1):'--';
+  el('dv').textContent=s.chg_vs_vwap==null?'--':((s.chg_vs_vwap>=0?'+':'')+s.chg_vs_vwap.toFixed(1)+'點');
 }
 async function loadHist(){
   if(!TUN)return;
-  try{const r=await fetch(TUN+'/us/hist',{signal:AbortSignal.timeout(20000)});
+  try{const r=await fetch(TUN+'/us/hist?sym=NDX',{signal:AbortSignal.timeout(30000)});
     if(r.ok){const j=await r.json();if(j&&j.bars){HIST=j;refreshAll();}}}
   catch(e){}
 }
@@ -587,7 +588,7 @@ async function loadLive(){
 async function tunnelTick(){
   if(!TUN)return;
   try{
-    const r=await fetch(TUN+'/us/m1',{signal:AbortSignal.timeout(4000)});
+    const r=await fetch(TUN+'/us/m1?sym=NDX',{signal:AbortSignal.timeout(4000)});
     if(!r.ok)throw 0;
     const j=await r.json();
     if(j&&j.bars){LIVE=j;refreshAll();tunFail=0;if(!HIST)loadHist();}
