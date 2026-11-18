@@ -49,6 +49,7 @@
 <div class="hdr">
   <span class="px" id="px">--</span><span class="s" id="sess"></span>
   <span class="s">本節均價線 <span id="vw">--</span>（<span id="dv">--</span>）</span>
+  <span class="s" id="vw3" style="color:#9aa0a6"></span>
   <span class="s" id="imp" style="color:#ffe600"></span>
   <span class="s" id="chain"></span>
   <span class="s" id="ts">載入中…</span>
@@ -58,6 +59,7 @@
     <button id="sigBtn" class="tfbtn" style="padding:3px 10px;color:#ffe600;border-color:#4a4520">訊號</button>
     <button id="repBtn" class="tfbtn" style="padding:3px 10px;color:#8bc34a;border-color:#2e4a20">回放</button>
     <button id="fillBtn" class="tfbtn" style="padding:3px 10px;color:#29b6f6;border-color:#1c3a4a">成交</button>
+    <button id="vwBtn" class="tfbtn" style="padding:3px 10px">均價線</button>
   </span>
   <select class="mkt" onchange="location.href=this.value"><option value="txf.html" selected>台指</option><option value="us.html">美股QQQ</option></select>
   <a href="opt.html" style="margin-left:0;color:#ffe600">模擬倉</a>
@@ -140,6 +142,8 @@ function getTF(tf){
   const ks=[...bk.values()].sort((a,b)=>a[0]-b[0]);
   const labels=[],ohlc=[],vol=[],vwaps=[],tsArr=[];
   const cum={};  // sid->[pv,v]
+  // v22.4(2026-11-19 董事長): 日盤/夜盤/日夜盤(前晚15:00起累計到當日收盤)三條均價線; 非本節時段拉平成參考位
+  const vwD=[],vwN=[],vwDN=[];let dn=[0,0],dnSid=null,curD=null,curN=null;
   let lastSess=null,lastVwap=null,lastBarI=0,otherVwap=null,otherSess=null;
   const barCnt={};
   for(const k of ks){
@@ -152,6 +156,9 @@ function getTF(tf){
     barCnt[sid]=(barCnt[sid]||0)+1;
     const vw=cum[sid][1]>0?+(cum[sid][0]/cum[sid][1]).toFixed(1):null;
     vwaps.push({kind:s[0],vw:vw});
+    if(s[0]==='N'){if(sid!==dnSid){dn=[0,0];dnSid=sid;}curN=vw;}else curD=vw;
+    dn[0]+=k[6];dn[1]+=k[5];
+    vwD.push(curD);vwN.push(curN);vwDN.push(dn[1]>0?+(dn[0]/dn[1]).toFixed(1):null);
     if(lastSess&&lastSess!==s[0]){otherVwap=lastVwap;otherSess=lastSess;}
     lastSess=s[0];lastVwap=vw;lastBarI=barCnt[sid];
   }
@@ -160,8 +167,9 @@ function getTF(tf){
   const st={price:lastC,time:LIVE?LIVE.t:'',sess:lastSess==='D'?'日盤':'夜盤',
     vwap_now:lastVwap,bar_i:lastBarI,
     chg_vs_vwap:(lastVwap!=null&&lastC!=null)?+(lastC-lastVwap).toFixed(1):null,
-    vwap_other:otherVwap,other_lbl:otherSess==='D'?'日盤':'夜盤'};
-  CACHE[tf]={labels:labels,ohlc:ohlc,vol:vol,vwapD:vD,vwapN:vN,stats:st,ts:tsArr};
+    vwap_other:otherVwap,other_lbl:otherSess==='D'?'日盤':'夜盤',
+    vwD:curD,vwN:curN,vwDN:vwDN.length?vwDN[vwDN.length-1]:null};
+  CACHE[tf]={labels:labels,ohlc:ohlc,vol:vol,vwapD:vD,vwapN:vN,vwD:vwD,vwN:vwN,vwDN:vwDN,stats:st,ts:tsArr};
   return CACHE[tf];
 }
 
@@ -438,8 +446,11 @@ function maValsAt(p,d,endI){
       o['MA'+m]=+(s/m).toFixed(1);}
     else o['MA'+m]=null;
   }
+  if(VWON&&d.vwD){o['日均']=d.vwD[endI];o['夜均']=d.vwN[endI];o['日夜均']=d.vwDN[endI];}
   return o;
 }
+let VWON=false;try{VWON=localStorage.getItem('txf_vwline')==='1';}catch(_){}
+const VWDEF=[['日均','vwD','#ffb74d'],['夜均','vwN','#9575cd'],['日夜均','vwDN','#4dd0e1']];
 function legFmt(p){return function(name){
   const v=p.maVals?p.maVals[name]:null;
   return name.replace('MA','M')+(v!=null?' '+v.toLocaleString():'');
@@ -458,6 +469,8 @@ function draw(p){
     data:m?sma(closes,m):[],connectNulls:false,symbol:'none',
     lineStyle:{width:1.4,color:MACOLOR[j]},itemStyle:{color:MACOLOR[j]},
     emphasis:{disabled:true}}));
+  const vwSeries=VWON?VWDEF.map(a=>({name:a[0],type:'line',data:d[a[1]],connectNulls:false,symbol:'none',
+    lineStyle:{width:1.2,type:'dashed',color:a[2]},itemStyle:{color:a[2]},emphasis:{disabled:true}})):[];
   const opt={
     animation:false,backgroundColor:'transparent',
     tooltip:{trigger:'axis',triggerOn:TOUCH?'none':'mousemove|click',
@@ -476,7 +489,7 @@ function draw(p){
     axisPointer:{link:[{xAxisIndex:'all'}]},
     legend:{top:0,left:54,right:4,textStyle:{color:C.ink2,fontSize:10},itemWidth:9,itemGap:5,
       formatter:legFmt(p),
-      data:maSeries.filter((s,j)=>p.ma[j]).map(s=>s.name)},
+      data:maSeries.filter((s,j)=>p.ma[j]).map(s=>s.name).concat(vwSeries.map(s=>s.name))},
     grid:[{left:54,right:12,top:26,bottom:(p.volh+13)+'%'},
           {left:54,right:12,bottom:'7%',height:p.volh+'%'}],
     xAxis:[{type:'category',data:d.labels,gridIndex:0,axisLine:{lineStyle:{color:'#2a2a2a'}},
@@ -539,7 +552,7 @@ function draw(p){
          lineStyle:{type:'dashed',color:'rgba(230,233,240,.7)',width:1},
          data:[{yAxis:p.closeVal}]}:{data:[]},
        itemStyle:{color:C.up,color0:C.dn,borderColor:C.up,borderColor0:C.dn}},
-      ...maSeries,
+      ...maSeries,...vwSeries,
       {name:'量',type:'bar',xAxisIndex:1,yAxisIndex:1,data:d.vol,
        itemStyle:{color:(q)=>{const o=d.ohlc[q.dataIndex];
          return (o&&o[1]>=o[0])?'rgba(255,51,51,.5)':'rgba(0,200,83,.5)';}}}
@@ -554,11 +567,13 @@ function header(){
   el('px').className='px '+(s.chg_vs_vwap>=0?'up':'dn');
   el('sess').textContent=s.sess;
   const age=LIVE?(Date.now()/1000-new Date(LIVE.t.replace(' ','T')).getTime()/1000):9e9;
-  if(R.on){el('ts').textContent='🎬回放 '+repClock()+(R.d&&R.d.synth?'(台指)':'')+' · v22.2';el('ts').style.color='#8bc34a';}
+  if(R.on){el('ts').textContent='🎬回放 '+repClock()+(R.d&&R.d.synth?'(台指)':'')+' · v22.4';el('ts').style.color='#8bc34a';}
   else{el('ts').style.color='';
-  el('ts').textContent=(LIVE?LIVE.t:'')+(age>300?' ⚠資料延遲':'')+(TUN?' ⚡秒級':' · 雲端60秒')+' · v22.2';}
+  el('ts').textContent=(LIVE?LIVE.t:'')+(age>300?' ⚠資料延遲':'')+(TUN?' ⚡秒級':' · 雲端60秒')+' · v22.4';}
   el('vw').textContent=s.vwap_now!=null?s.vwap_now.toLocaleString():'--';
   el('dv').textContent=s.chg_vs_vwap==null?'--':((s.chg_vs_vwap>=0?'+':'')+s.chg_vs_vwap+'點');
+  const f3=v=>v!=null?Math.round(v).toLocaleString():'--';
+  el('vw3').textContent='日 '+f3(s.vwD)+'｜夜 '+f3(s.vwN)+'｜日夜 '+f3(s.vwDN);
   chainTick();
 }
 async function loadHist(){
@@ -570,6 +585,7 @@ function gotLive(j){
   if(R.on){R.liveHold=j;return;}       // 回放中: 即時資料先擱著, 結束回放再接回
   // 發現/更新隧道網址(家裡電腦廣播的秒級通道)
   if(j&&j.tun&&j.tun!==TUN){TUN=j.tun;tunFail=0;
+    try{localStorage.setItem('txf_tun',TUN);}catch(_){}
     if(!tunTimer)tunTimer=setInterval(tunnelTick,2000);
     tunnelTick();impTick();}
   if(TUN){return;}                    // 秒級模式中: 雲端資料較舊, 只取tun不覆蓋
@@ -604,12 +620,18 @@ async function tunnelTick(){
 }
 // ═ 結算座標儀表: 隱含結算K+C−P(選擇權市場定價的結算位, 30秒/次, 隧道模式限定) ═
 // 期貨在跌但這個數字不跌=基差假動作; 詳見 08_策略庫\結算日尾盤選擇權SOP_20260911.txt
+// v22.4: 開頁先用上次記住的通道網址直接要(不等雲端檔); 還沒拿到顯示「載入中」; 首次成功前每5秒重試(最多12次)
+let IMPOK=false,impTry=0,TUN0=null;try{TUN0=localStorage.getItem('txf_tun');}catch(_){}
+function impRetry(){if(!IMPOK&&impTry<12){impTry++;setTimeout(impTick,5000);}}
 async function impTick(){
   const el=document.getElementById('imp');
-  if(!TUN){el.textContent='';return;}
+  const u=TUN||TUN0;
+  if(!u){el.textContent=IMPOK?'':'結算座標 載入中…';return;}
+  if(!IMPOK)el.textContent='結算座標 載入中…';
   try{
-    const r=await fetch(TUN+'/imp',{signal:AbortSignal.timeout(4000)});
+    const r=await fetch(u+'/imp',{signal:AbortSignal.timeout(IMPOK?4000:8000)});
     const j=await r.json();
+    IMPOK=true;
     if(j&&j.imp&&j.age<180){
       let tx='結算座標 '+Math.round(j.imp).toLocaleString()
         +'｜'+(j.basis>=0?'逆':'正')+'價差'+Math.abs(Math.round(j.basis))+'點';
@@ -620,8 +642,8 @@ async function impTick(){
       el.textContent=tx;
       el.title='K+C−P中位數 '+j.n+'檔 序列'+j.exp+' @'+j.t
         +(j.leg_t?('｜腿起點'+j.leg_t+' Δ期'+j.dfut+' Δ隱'+j.dimp):'');
-    }else el.textContent='';
-  }catch(e){el.textContent='';}
+    }else el.textContent=(j&&j.age>=180)?'結算座標 --（報價停更）':'';
+  }catch(e){if(IMPOK)el.textContent='';else impRetry();}
 }
 // ═ MA200訊號鏈燈 (2026-09-15 董事長命題: 先做訊號看結果, 純顯示不建倉) ═
 // 鏈=乾淨條(距上次穿越分鐘)+觸線表態(觸線後5分鐘: 插穿35點→85%穿, 推回30點→78%彈)
@@ -1060,7 +1082,10 @@ document.getElementById('repBtn').onclick=async()=>{
   el.style.display='block';repPanelRender();
 };
 
-loadHist();loadLive();loadFills();setInterval(impTick,30000);setInterval(chainTick,15000);
+loadHist();loadLive();loadFills();impTick();setInterval(impTick,30000);
+(function(){const b=document.getElementById('vwBtn');
+  const paint=()=>{b.style.color=VWON?'#4dd0e1':'';b.style.borderColor=VWON?'#1c4a4a':'';};paint();
+  b.onclick=()=>{VWON=!VWON;try{localStorage.setItem('txf_vwline',VWON?'1':'0');}catch(_){}paint();refreshAll();};})();setInterval(chainTick,15000);
 setInterval(loadLive,30000);
 setInterval(loadHist,1800000);
 setInterval(loadFills,1800000);
