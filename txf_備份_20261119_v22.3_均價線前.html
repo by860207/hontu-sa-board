@@ -1,0 +1,1067 @@
+<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8">
+<title>台指走勢圖(雲端)</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+<style>
+  :root{--bg:#000000;--panel:#101010;--ink:#f2f2f2;--ink2:#9aa0a6;--up:#ff3333;--dn:#00c853;--acc:#29b6f6}
+  *{box-sizing:border-box;margin:0}
+  body{background:var(--bg);color:var(--ink);font:13px/1.4 "Segoe UI","Microsoft JhengHei",sans-serif;padding:6px}
+  .hdr{display:flex;gap:12px;align-items:baseline;padding:2px 8px 6px;flex-wrap:wrap}
+  .hdr .px{font-size:20px;font-weight:700;font-variant-numeric:tabular-nums}
+  .hdr .s{font-size:12px;color:var(--ink2)}
+  .hdr a{color:var(--acc);font-size:12px;text-decoration:none;margin-left:auto}
+  .bar{display:flex;gap:5px;align-items:center;flex-wrap:wrap;background:var(--panel);
+       border-radius:6px;padding:1px 6px;margin-bottom:1px}
+  .tfbtn{background:#1a1a1a;color:var(--ink2);border:1px solid #2a2a2a;border-radius:5px;
+         padding:1px 10px;font-size:12px;cursor:pointer;font-family:inherit}
+  .tfbtn.on{background:var(--acc);color:#000000;font-weight:700;border-color:var(--acc)}
+  .bar label{font-size:11px;color:var(--ink2);margin-left:4px}
+  .bar input[type=number]{width:42px;background:#1a1a1a;color:var(--ink);border:1px solid #2a2a2a;
+       border-radius:4px;padding:1px 3px;font-size:12px;font-family:inherit}
+  .bar input[type=range]{width:70px;accent-color:var(--acc)}
+  .chart{width:100%}
+  .up{color:var(--up)}.dn{color:var(--dn)}
+  #sigPanel{display:none;position:fixed;right:8px;z-index:99;background:#101010;
+    border:1px solid #2a2a2a;border-radius:8px;max-height:62vh;overflow-y:auto;min-width:235px;
+    box-shadow:0 4px 18px rgba(0,0,0,.6)}
+  #sigPanel .sighd{position:sticky;top:0;background:#181818;padding:6px 10px;font-size:12px;
+    color:var(--ink2);display:flex;gap:5px;align-items:center;border-bottom:1px solid #2a2a2a}
+  #sigPanel .sighd input{width:46px;background:#1a1a1a;color:var(--ink);border:1px solid #2a2a2a;
+    border-radius:4px;padding:1px 3px;font-size:12px;font-family:inherit}
+  .sigitem{padding:5px 12px;font-size:13px;cursor:pointer;border-bottom:1px solid #1a1a1a;
+    font-variant-numeric:tabular-nums}
+  .sigitem:active,.sigitem:hover{background:#1c2a33}
+  #repPanel{display:none;position:fixed;left:8px;right:8px;z-index:98;background:#101010;
+    border:1px solid #3a3520;border-radius:8px;max-height:70vh;overflow-y:auto;
+    box-shadow:0 4px 18px rgba(0,0,0,.6);padding:6px 8px;font-size:12px}
+  #repPanel .row{display:flex;gap:5px;align-items:center;flex-wrap:wrap;margin:3px 0}
+  #repPanel select,#repPanel input{background:#1a1a1a;color:var(--ink);border:1px solid #2a2a2a;
+    border-radius:4px;padding:2px 4px;font-size:12px;font-family:inherit}
+  #repPanel .chip{background:#1a1a1a;border:1px solid #2a2a2a;border-radius:10px;padding:1px 8px;cursor:pointer}
+  #repPanel .chip.on{background:#4a4520;border-color:#ffe600;color:#ffe600}
+  #repPanel table{border-collapse:collapse;font-variant-numeric:tabular-nums}
+  #repPanel td,#repPanel th{padding:1px 5px;border-bottom:1px solid #1e1e1e;text-align:right;white-space:nowrap}
+  #repPanel .buy{color:#ff3333}#repPanel .sell{color:#00c853}
+  .repbtn{background:#1a1a1a;color:var(--ink);border:1px solid #2a2a2a;border-radius:5px;padding:2px 9px;font-size:12px;cursor:pointer;font-family:inherit}
+  .mkt{background:#1a1a1a;color:#ffe600;border:1px solid #4a4520;border-radius:5px;padding:2px 6px;font-size:12px;font-family:inherit}
+  .repbtn.warn{color:#ffe600;border-color:#4a4520}
+</style></head><body>
+<div class="hdr">
+  <span class="px" id="px">--</span><span class="s" id="sess"></span>
+  <span class="s">本節均價線 <span id="vw">--</span>（<span id="dv">--</span>）</span>
+  <span class="s" id="imp" style="color:#ffe600"></span>
+  <span class="s" id="chain"></span>
+  <span class="s" id="ts">載入中…</span>
+  <span style="display:flex;gap:4px;align-items:center">
+    <input id="jump" placeholder="09021005" inputmode="numeric" style="width:110px;background:#1a1a1a;color:var(--ink);border:1px solid #2a2a2a;border-radius:5px;padding:3px 6px;font-size:13px;font-family:inherit">
+    <button id="jumpBtn" class="tfbtn" style="padding:3px 10px">跳至</button>
+    <button id="sigBtn" class="tfbtn" style="padding:3px 10px;color:#ffe600;border-color:#4a4520">訊號</button>
+    <button id="repBtn" class="tfbtn" style="padding:3px 10px;color:#8bc34a;border-color:#2e4a20">回放</button>
+    <button id="fillBtn" class="tfbtn" style="padding:3px 10px;color:#29b6f6;border-color:#1c3a4a">成交</button>
+  </span>
+  <select class="mkt" onchange="location.href=this.value"><option value="txf.html" selected>台指</option><option value="us.html">美股QQQ</option></select>
+  <a href="opt.html" style="margin-left:0;color:#ffe600">模擬倉</a>
+  <a href="index.html">← 訊號看板</a>
+</div>
+<div id="sigPanel"></div>
+<div id="repPanel"></div>
+<div id="panels"></div>
+<script>
+const RAW='https://raw.githubusercontent.com/by860207/hontu-sa-board/live/';
+const css=getComputedStyle(document.documentElement);
+const C={up:css.getPropertyValue('--up').trim(),dn:css.getPropertyValue('--dn').trim(),
+         ink:css.getPropertyValue('--ink').trim(),ink2:css.getPropertyValue('--ink2').trim()};
+const MACOLOR=['#ffe600','#35c8ff','#c65fe8','#ff9100','#8bc34a'];
+// 畫面預設根數: 對齊董事長券商軟體(5分圖量測≈100根/小時標籤7格84根占八成寬)
+// 初始/跳轉/各週期/回放訓練 全部同一個數, 要放大縮小由手勢自理 (2026-09-19 董事長定)
+const BARS=100;
+let PANELS=[{tf:5,ma:[5,10,20,60,40],volh:12},{tf:15,ma:[5,10,20,60,40],volh:12}];
+try{const sv=JSON.parse(localStorage.getItem('txfcloud_panels'));
+    if(Array.isArray(sv)&&sv.length===2)PANELS=PANELS.map((p,i)=>Object.assign(p,sv[i]));}catch(e){}
+PANELS.forEach(p=>{while(p.ma.length<5)p.ma.push(40);});   // v21: 第5條均線(董事長: 5分加MA40), 舊設定自動補
+function save(){try{localStorage.setItem('txfcloud_panels',JSON.stringify(
+  PANELS.map(p=>({tf:p.tf,ma:p.ma,volh:p.volh}))));}catch(e){}}
+
+let HIST=null,LIVE=null,M1=[],FILLS=null,FSEL=null;   // M1: [[ts,o,h,l,c,v,pv],...] FILLS: 實際成交紀錄 FSEL: 選中的交易日(YYYYMMDD), null=不顯示
+const CACHE={};                  // tf -> {labels,ohlc,vol,stats}
+const R={on:false,blind:false,d:null,day0:null,bars:new Map(),marks:[],liveHold:null};  // v21 回放練習狀態
+
+// ═ v22.1 平移順暢化(2026-10-05 董事長: 1分K移動卡卡的) ═
+// 1分K有6.9萬根: 每次資料更新都要全量合流+5條均線+整張重畫(手機上數百ms)。手指正在平移/縮放時先擱著, 放手後補畫
+const IA={t:0};      // t=最後一次觸控移動/縮放事件的時間
+function iaBusy(){return Date.now()-IA.t<350;}   // 只看「最近350ms有沒有在動」, 不看手指是否按著(避免漏掉touchend時永遠不更新)
+let DIRTY=false,dirtyT=null;
+function refreshAll(){
+  if(iaBusy()){DIRTY=true;
+    if(!dirtyT)dirtyT=setInterval(()=>{
+      if(iaBusy())return;
+      clearInterval(dirtyT);dirtyT=null;
+      if(DIRTY){DIRTY=false;mergeBars();PANELS.forEach(draw);header();}},150);
+    return;}
+  DIRTY=false;mergeBars();PANELS.forEach(draw);header();
+}
+
+// ═ 資料合流 + 週期合成(頁面端) ═
+function mergeBars(){
+  const m=new Map();
+  if(HIST)for(const b of HIST.bars)m.set(b[0],b);
+  if(LIVE)for(const b of LIVE.bars)m.set(b[0],b);
+  if(R.on){                                   // 回放: 回放日t0之後全部換成回放到游標為止的K(不看未來)
+    for(const k of [...m.keys()])if(k>=R.d.t0)m.delete(k);
+    for(const b of R.bars.values())m.set(b[0],b);
+  }
+  M1=[...m.values()].sort((a,b)=>a[0]-b[0]);
+  for(const k in CACHE)delete CACHE[k];
+}
+function sessOf(ts){  // 回傳 [種類,錨字串] 或 null; ts=unix秒(手機在台灣=本地時間)
+  const d=new Date(ts*1000),h=d.getHours(),mi=d.getMinutes(),hm=h*60+mi;
+  if(hm>=525&&hm<825)return['D',d.toDateString()+'D'];
+  if(hm>=900)return['N',d.toDateString()+'N'];
+  if(hm<300){const p=new Date(ts*1000-86400000);return['N',p.toDateString()+'N'];}
+  return null;
+}
+function pad(n){return (n<10?'0':'')+n;}
+function lbl(ts){const d=new Date(ts*1000);
+  if(R.on&&R.blind){                           // 盲抽: 不露日期, 只給「前N日/當日 HH:MM」
+    const dd=Math.round((new Date(d.getFullYear(),d.getMonth(),d.getDate())-R.day0)/86400000);
+    return (dd===0?'當日':('前'+(-dd)+'日'))+' '+pad(d.getHours())+':'+pad(d.getMinutes());}
+  return pad(d.getMonth()+1)+'-'+pad(d.getDate())+' '+pad(d.getHours())+':'+pad(d.getMinutes());}
+// v22.2(2026-10-05 董事長核): K棒時間標籤改券商慣例=「結束時間」(券商20:50那根=這裡原本標20:45那根); d.ts 內部仍是開始時間
+function getTF(tf){
+  if(CACHE[tf])return CACHE[tf];
+  if(!M1.length)return null;
+  const bk=new Map();
+  for(const b of M1){
+    const t0=Math.floor(b[0]/(tf*60))*(tf*60);
+    let x=bk.get(t0);
+    if(!x){x=[t0,b[1],b[2],b[3],b[4],b[5],b[6]];bk.set(t0,x);}
+    else{x[2]=Math.max(x[2],b[2]);x[3]=Math.min(x[3],b[3]);x[4]=b[4];x[5]+=b[5];x[6]+=b[6];}
+  }
+  const ks=[...bk.values()].sort((a,b)=>a[0]-b[0]);
+  const labels=[],ohlc=[],vol=[],vwaps=[],tsArr=[];
+  const cum={};  // sid->[pv,v]
+  let lastSess=null,lastVwap=null,lastBarI=0,otherVwap=null,otherSess=null;
+  const barCnt={};
+  for(const k of ks){
+    const s=sessOf(k[0]);
+    if(!s)continue;
+    labels.push(lbl(k[0]+tf*60));ohlc.push([k[1],k[4],k[3],k[2]]);vol.push(k[5]);tsArr.push(k[0]);
+    const sid=s[1];
+    if(!cum[sid])cum[sid]=[0,0];
+    cum[sid][0]+=k[6];cum[sid][1]+=k[5];
+    barCnt[sid]=(barCnt[sid]||0)+1;
+    const vw=cum[sid][1]>0?+(cum[sid][0]/cum[sid][1]).toFixed(1):null;
+    vwaps.push({kind:s[0],vw:vw});
+    if(lastSess&&lastSess!==s[0]){otherVwap=lastVwap;otherSess=lastSess;}
+    lastSess=s[0];lastVwap=vw;lastBarI=barCnt[sid];
+  }
+  const vD=vwaps.map(x=>x.kind==='D'?x.vw:null), vN=vwaps.map(x=>x.kind==='N'?x.vw:null);
+  const lastC=ohlc.length?ohlc[ohlc.length-1][1]:null;
+  const st={price:lastC,time:LIVE?LIVE.t:'',sess:lastSess==='D'?'日盤':'夜盤',
+    vwap_now:lastVwap,bar_i:lastBarI,
+    chg_vs_vwap:(lastVwap!=null&&lastC!=null)?+(lastC-lastVwap).toFixed(1):null,
+    vwap_other:otherVwap,other_lbl:otherSess==='D'?'日盤':'夜盤'};
+  CACHE[tf]={labels:labels,ohlc:ohlc,vol:vol,vwapD:vD,vwapN:vN,stats:st,ts:tsArr};
+  return CACHE[tf];
+}
+
+// ═ 輸入時間跳K棒: 支援「09-02 10:30」「9/2 1030」「10:30(=今天)」 ═
+function parseJump(s){
+  s=s.trim();
+  const now=new Date();
+  let m=s.match(/^(\d{2})(\d{2})(\d{2})(\d{2})$/);            // 09021005 = 9/2 10:05
+  if(m){const d=new Date(now.getFullYear(),+m[1]-1,+m[2],+m[3],+m[4]);
+    if(d-now>90*86400000)d.setFullYear(d.getFullYear()-1);    // 跨年往回找
+    return d.getTime()/1000;}
+  m=s.match(/^(\d{1,2})[-\/](\d{1,2})[ ,]+(\d{1,2}):?(\d{2})$/);  // 09-02 10:05 也收
+  if(m){const d=new Date(now.getFullYear(),+m[1]-1,+m[2],+m[3],+m[4]);
+    if(d-now>90*86400000)d.setFullYear(d.getFullYear()-1);
+    return d.getTime()/1000;}
+  m=s.match(/^(\d{1,2}):?(\d{2})$/);                          // 1005 或 10:05 = 今天
+  if(m)return new Date(now.getFullYear(),now.getMonth(),now.getDate(),+m[1],+m[2]).getTime()/1000;
+  return null;
+}
+function findBar(d,b){                           // 二分找最接近b(unix秒)的K棒index
+  let lo=0,hi=d.ts.length-1;
+  while(lo<hi){const mid=(lo+hi)>>1;if(d.ts[mid]<b)lo=mid+1;else hi=mid;}
+  if(lo>0&&Math.abs(d.ts[lo-1]-b)<Math.abs(d.ts[lo]-b))lo--;
+  return lo;
+}
+function jumpTo(t,winOf){                        // 兩張圖同時跳到時間t, winOf(p)=顯示根數
+  PANELS.forEach(p=>{
+    const d=getTF(p.tf);if(!d||!d.ts.length)return;
+    const idx=findBar(d,Math.floor(t/(p.tf*60))*(p.tf*60));
+    const win=winOf(p);
+    p.win={size:win,right:false,endI:Math.min(d.ts.length-1,idx+(win>>1))};
+    draw(p);
+  });
+}
+function doJump(){
+  const inp=document.getElementById('jump');
+  const t=parseJump(inp.value);
+  if(t==null){inp.style.borderColor='#ff3333';setTimeout(()=>inp.style.borderColor='#2a2a2a',900);return;}
+  jumpTo(t-1,()=>BARS);                          // 輸入的是K棒標籤(結束時間)→找「在那一刻之前收完的那根」; 跳過去後顯示的視窗寬
+  inp.blur();
+}
+document.getElementById('jumpBtn').onclick=doJump;
+document.getElementById('jump').addEventListener('keydown',e=>{if(e.key==='Enter')doJump();});
+
+// ═ MA200觸線訊號回放 (2026-09-12 董事長命題) ═
+// 訊號: 1分K低~高包住MA200(與圖上MA200同一條:全K連續SMA200); 訊號後cool根內觸線不算新訊號
+// cool同時=跳轉後兩張圖的視窗根數(董事長定義:冷卻=畫面根數, 一個數字管兩件事)
+const SIG={cool:+(localStorage.getItem('txf_sigcool')||BARS),mark:null,list:[]};
+function scanSignals(){
+  const d=getTF(1);
+  if(!d||d.ohlc.length<220)return[];
+  const closes=d.ohlc.map(v=>v[1]);
+  const ma=sma(closes,200);
+  const from=Date.now()/1000-30*86400;
+  const out=[];let lastI=-1e9;
+  for(let i=0;i<closes.length;i++){
+    if(ma[i]==null)continue;
+    const o=d.ohlc[i];                           // [開,收,低,高]
+    if(o[2]<=ma[i]&&ma[i]<=o[3]&&i-lastI>=SIG.cool){
+      lastI=i;                                   // 冷卻內的觸線不計也不延長冷卻
+      if(d.ts[i]>=from)out.push({t:d.ts[i],px:o[1],dir:i>0&&closes[i-1]>=ma[i]?1:-1});
+    }
+  }
+  return out.reverse();                          // 新→舊
+}
+function renderSigPanel(){
+  const el=document.getElementById('sigPanel');
+  SIG.list=scanSignals();
+  el.innerHTML='<div class="sighd">近一月MA200觸線 '+SIG.list.length+'次｜視窗/冷卻'
+    +'<input id="sigCool" type="number" min="10" max="500" value="'+SIG.cool+'">根'
+    +'<span id="sigX" style="margin-left:auto;cursor:pointer;padding:0 5px">✕</span></div>'
+    +(SIG.list.length?SIG.list.map((s,i)=>'<div class="sigitem" data-i="'+i+'">'
+      +lbl(s.t+60)+'｜'+s.px.toLocaleString()
+      +'｜<span style="color:'+(s.dir>0?'#ff3333':'#00c853')+'">'+(s.dir>0?'上踩':'下碰')+'</span></div>').join('')
+     :'<div class="sigitem" style="cursor:default;color:#9aa0a6">資料不足或無訊號</div>');
+  el.querySelector('#sigX').onclick=()=>{el.style.display='none';};
+  el.querySelector('#sigCool').onchange=e=>{
+    SIG.cool=Math.max(10,+e.target.value||100);
+    try{localStorage.setItem('txf_sigcool',SIG.cool);}catch(_){}
+    renderSigPanel();};
+  el.querySelectorAll('.sigitem[data-i]').forEach(it=>it.onclick=()=>{
+    sigJump(SIG.list[+it.dataset.i].t);
+    el.style.display='none';});
+}
+document.getElementById('sigBtn').onclick=()=>{
+  const el=document.getElementById('sigPanel');
+  if(el.style.display==='block'&&el.dataset.m!=='fill'){el.style.display='none';return;}
+  el.dataset.m='sig';
+  el.style.top=(document.querySelector('.hdr').offsetHeight+6)+'px';
+  renderSigPanel();el.style.display='block';
+};
+function sigJump(t){
+  SIG.mark=t;                                    // 圖上插黃色「訊」標記
+  const want=[1,5];                              // 點訊號→上圖1分/下圖5分
+  PANELS.forEach((p,i)=>{
+    if(p.tf!==want[i]){p.tf=want[i];p.win=null;p.chart.clear();
+      p.bar.querySelectorAll('.tfbtn').forEach(x=>x.classList.toggle('on',+x.dataset.tf===p.tf));}
+  });
+  save();
+  jumpTo(t,()=>SIG.cool);                        // 兩張圖視窗=冷卻根數、訊號K置中, 之後可自由拖動
+}
+
+// ═ UI ═
+const root=document.getElementById('panels');
+PANELS.forEach((p,i)=>{
+  const bar=document.createElement('div');bar.className='bar';
+  bar.innerHTML=[1,5,15].map(t=>'<button class="tfbtn'+(t===p.tf?' on':'')+'" data-tf="'+t+'">'+t+'分</button>').join('')
+    +'<label>均線</label>'+p.ma.map((v,j)=>'<input type="number" min="0" max="500" value="'+v+'" data-ma="'+j+'" title="0=關閉" style="border-bottom:2px solid '+MACOLOR[j]+'">').join('')
+    +'<label>量高</label><input type="range" min="6" max="26" value="'+p.volh+'" data-volh>';
+  const div=document.createElement('div');div.className='chart';div.id='ch'+i;
+  root.appendChild(bar);root.appendChild(div);
+  p.chart=echarts.init(div);p.win=null;p.bar=bar;
+  // 記錄目前視窗(根數+是否貼右緣); 刷新時原樣還原, 不會自己跳回全部K
+  p.chart.on('datazoom',()=>{
+    IA.t=Date.now();
+    const d=CACHE[p.tf];if(!d)return;
+    const n=d.labels.length;
+    let s=null,e2=null;
+    try{const vr=p.chart.getModel().getComponent('dataZoom',0).getValueRange();   // v22.1: 直接讀視窗, 不深拷貝整包option
+      s=Math.round(vr[0]);e2=Math.round(vr[1]);}catch(_){s=null;}
+    if(s==null||e2==null||isNaN(s)||isNaN(e2)){                                    // 保險: 讀不到才走舊路
+      const o=p.chart.getOption().dataZoom[0];if(!o)return;
+      if(o.startValue!=null&&o.endValue!=null){s=o.startValue;e2=o.endValue;}
+      else{s=Math.round((o.start||0)/100*(n-1));e2=Math.round((o.end==null?100:o.end)/100*(n-1));}
+    }
+    p.win={size:Math.max(5,e2-s+1),right:e2>=n-2,endI:e2};
+    clearTimeout(p._legT);                                   // 圖例帶值跟著畫面右緣: 停手150ms後才更新一次
+    p._legT=setTimeout(()=>{
+      const d2=CACHE[p.tf];if(!d2||!p.win)return;
+      p.maVals=maValsAt(p,d2,Math.min(p.win.endI,d2.ohlc.length-1));
+      p.chart.setOption({legend:{formatter:legFmt(p)}});},150);
+  });
+  bar.querySelectorAll('.tfbtn').forEach(b=>b.onclick=()=>{
+    p.tf=+b.dataset.tf;p.win=null;save();
+    bar.querySelectorAll('.tfbtn').forEach(x=>x.classList.toggle('on',x===b));
+    p.chart.clear();draw(p);
+  });
+  bar.querySelectorAll('input[type=number]').forEach(inp=>inp.onchange=()=>{
+    p.ma[+inp.dataset.ma]=Math.max(0,+inp.value||0);save();draw(p);
+  });
+  bar.querySelector('input[data-volh]').oninput=(e)=>{p.volh=+e.target.value;save();draw(p);};
+});
+function sizeCharts(){
+  // 量測表頭+兩條工具列的實際高度(手機會摺行變高), 剩餘空間平分給兩張圖 → K棒+量一定同框
+  const hdr=document.querySelector('.hdr');
+  const bars=[...document.querySelectorAll('.bar')];
+  const used=hdr.offsetHeight+bars.reduce((s,b)=>s+b.offsetHeight+2,0)+16;
+  const h=Math.max(185,(window.innerHeight-used)/2);
+  PANELS.forEach((p,i)=>{const d=document.getElementById('ch'+i);
+    d.style.height=h+'px';p.chart.resize();});
+}
+sizeCharts();window.addEventListener('resize',sizeCharts);
+
+// ═ 十字線: 手機改「長按」才出現(短按/滑動=平移縮放不干擾); 桌機維持滑鼠移動 ═
+const TOUCH=('ontouchstart' in window);
+// 十字標規格(董事長定): 單指原地長按3秒→出現; 再長按3秒→消失(開關式)
+// 縮放/平移手勢不會誤觸發; 十字標開著時: 單指拖=移動十字標, 雙指捏=縮放(自製pinch)
+function setupLongPress(p,div){
+  let timer=null,sx=0,sy=0,pinch0=null,tipDrag=null,moved=false;
+  const HOLD=1000;
+  const pos=(t)=>{const r=div.getBoundingClientRect();return{x:t.clientX-r.left,y:t.clientY-r.top};};
+  function tipEl(){
+    if(!p._tip||!p._tip.isConnected){
+      p._tip=[...p.chart.getDom().querySelectorAll('div')]
+        .find(x=>x.style&&x.style.zIndex==='9999999')||null;
+    }
+    return p._tip;
+  }
+  function moveCross(x,y){
+    p.lastCrossXY=[x,y];
+    p.chart.dispatchAction({type:'showTip',x:x,y:y});
+    // 收盤價虛線: 換算游標所在K棒 -> 拉在其收盤價
+    const d=CACHE[p.tf];if(!d)return;
+    try{
+      const c=p.chart.convertFromPixel({seriesIndex:0},[x,y]);
+      const idx=Math.max(0,Math.min(d.ohlc.length-1,Math.round(c[0])));
+      const cv=d.ohlc[idx][1];
+      if(cv!==p.closeVal){p.closeVal=cv;
+        p.chart.setOption({series:[{markLine:{silent:true,symbol:'none',animation:false,
+          label:{show:true,position:'insideEndTop',color:'#e6e9f0',fontSize:9,formatter:String(cv)},
+          lineStyle:{type:'dashed',color:'rgba(230,233,240,.7)',width:1},
+          data:[{yAxis:cv}]}}]});}
+    }catch(_){}
+  }
+  function setCross(on){
+    p.cross=on;
+    if(navigator.vibrate)try{navigator.vibrate(on?[40,60,40]:40);}catch(_){ }
+    if(on){
+      p.chart.setOption({dataZoom:[{disabled:true}]});   // 開十字標: 關echarts原生手勢
+    }else{
+      p.closeVal=null;p._tip=null;tipDrag=null;
+      p.chart.dispatchAction({type:'hideTip'});
+      p.chart.clear();draw(p);                            // 徹底重畫: 十字線+虛線+框框全清(修卡在原地bug)
+    }
+  }
+  div.addEventListener('touchstart',e=>{
+    const te=tipEl();
+    if(p.cross&&te&&e.touches.length===1&&te.contains(e.target)){
+      const q=pos(e.touches[0]);                          // 按在框框上=拖框, 不動十字標不計長按
+      const br=te.getBoundingClientRect(),r=div.getBoundingClientRect();
+      tipDrag={dx:q.x-(br.left-r.left),dy:q.y-(br.top-r.top)};  // 用實際渲染位置算偏移(transform定位)
+      clearTimeout(timer);
+      return;
+    }
+    if(e.touches.length===1){
+      const t=e.touches[0];sx=t.clientX;sy=t.clientY;pinch0=null;moved=false;
+      clearTimeout(timer);
+      timer=setTimeout(()=>{
+        if(moved)return;
+        const r=div.getBoundingClientRect();
+        setCross(!p.cross);
+        if(p.cross)moveCross(sx-r.left,sy-r.top);
+      },HOLD);
+      if(p.cross){const q=pos(t);moveCross(q.x,q.y);}
+    }else{
+      clearTimeout(timer);                                // 第二指=縮放意圖, 不算長按
+      if(p.cross&&e.touches.length===2){
+        const dx=e.touches[0].clientX-e.touches[1].clientX,
+              dy=e.touches[0].clientY-e.touches[1].clientY;
+        const d=CACHE[p.tf],n=d?d.labels.length:0;
+        const w=p.win||{size:BARS,right:true,endI:n-1};
+        pinch0={d0:Math.hypot(dx,dy),size0:w.size,
+                endI0:w.right?n-1:w.endI,right0:w.right};
+      }
+    }
+  },{passive:true});
+  div.addEventListener('touchmove',e=>{
+    IA.t=Date.now();
+    if(tipDrag&&e.touches.length===1){
+      e.preventDefault();                                 // 拖框框: 放到哪停到哪
+      const q=pos(e.touches[0]);
+      p.tipPos=[q.x-tipDrag.dx,q.y-tipDrag.dy];
+      // 不直接改style(echarts用transform定位會蓋掉), 改為用它自己的機制原地重擺
+      if(p.lastCrossXY)p.chart.dispatchAction({type:'showTip',x:p.lastCrossXY[0],y:p.lastCrossXY[1]});
+      return;
+    }
+    if(e.touches.length===1){
+      const t=e.touches[0];
+      if(Math.abs(t.clientX-sx)>12||Math.abs(t.clientY-sy)>12){
+        clearTimeout(timer);moved=true;          // v22.1(董事長1005): 移動過=平移手勢, 這次觸控不再計秒;
+      }                                          //   只有「按下後原地不動滿HOLD」才開/關十字標(v20是停下來又重新計秒→平移中途停頓會誤觸)
+      if(p.cross){e.preventDefault();const q=pos(t);moveCross(q.x,q.y);}
+    }else if(p.cross&&pinch0&&e.touches.length===2){
+      e.preventDefault();                                 // 十字標開著也能雙指縮放
+      const dx=e.touches[0].clientX-e.touches[1].clientX,
+            dy=e.touches[0].clientY-e.touches[1].clientY;
+      const scale=Math.hypot(dx,dy)/pinch0.d0;
+      const d=CACHE[p.tf];if(!d)return;
+      const n=d.labels.length;
+      const size=Math.max(10,Math.min(n,Math.round(pinch0.size0/scale)));
+      p.win={size:size,right:pinch0.right0,
+             endI:pinch0.right0?n-1:Math.min(n-1,pinch0.endI0)};
+      draw(p);
+    }
+  },{passive:false});
+  const end=e=>{clearTimeout(timer);tipDrag=null;
+    if(!e.touches||e.touches.length<2)pinch0=null;};
+  div.addEventListener('touchend',end);
+  div.addEventListener('touchcancel',end);
+}
+PANELS.forEach((p,i)=>{if(TOUCH)setupLongPress(p,document.getElementById('ch'+i));});
+
+function sma(a,n){const r=Array(a.length).fill(null);if(!n||n<1)return r;
+  let s=0;for(let i=0;i<a.length;i++){s+=a[i];if(i>=n)s-=a[i-n];
+    if(i>=n-1)r[i]=Math.round(s/n*10)/10;}return r;}
+
+// ═ 圖例帶值: 圖頂那排均線名字後面直接顯示「畫面右緣K棒」的均線值 (2026-09-13 董事長命題) ═
+// 看盤=最新K的值; 回放/拖到歷史位置=該時點的值(datazoom時重算)
+function maValsAt(p,d,endI){
+  const o={};
+  for(const m of p.ma){
+    if(!m)continue;
+    if(endI>=m-1){let s=0;for(let i=endI-m+1;i<=endI;i++)s+=d.ohlc[i][1];
+      o['MA'+m]=+(s/m).toFixed(1);}
+    else o['MA'+m]=null;
+  }
+  return o;
+}
+function legFmt(p){return function(name){
+  const v=p.maVals?p.maVals[name]:null;
+  return name.replace('MA','M')+(v!=null?' '+v.toLocaleString():'');
+};}
+
+function draw(p){
+  const d=getTF(p.tf);if(!d)return;
+  const closes=d.ohlc.map(v=>v[1]);
+  const n=d.labels.length, show=BARS;
+  let startI,endI;
+  if(p.win){endI=p.win.right?n-1:Math.min(p.win.endI,n-1);
+    startI=Math.max(0,endI-p.win.size+1);}
+  else{endI=n-1;startI=Math.max(0,n-show);}
+  p.maVals=maValsAt(p,d,endI);
+  const maSeries=p.ma.map((m,j)=>({name:m?('MA'+m):('ma'+j+'off'),type:'line',
+    data:m?sma(closes,m):[],connectNulls:false,symbol:'none',
+    lineStyle:{width:1.4,color:MACOLOR[j]},itemStyle:{color:MACOLOR[j]},
+    emphasis:{disabled:true}}));
+  const opt={
+    animation:false,backgroundColor:'transparent',
+    tooltip:{trigger:'axis',triggerOn:TOUCH?'none':'mousemove|click',
+      axisPointer:{type:'cross'},backgroundColor:'rgba(0,0,0,.92)',borderColor:'#333',
+      textStyle:{color:C.ink,fontSize:9,lineHeight:12},confine:!TOUCH,padding:[2,5],
+      enterable:true,transitionDuration:0,
+      position:TOUCH?function(){return p.tipPos||[8,20];}:undefined,
+      formatter:(ps)=>{let out='<b>'+(ps[0]?ps[0].axisValue:'')+'</b><br>';
+        let mas=[];
+        for(const q of ps){if(q.seriesType==='candlestick'){const v=q.value;
+            out+='開'+v[1]+' 收'+v[2]+'<br>低'+v[3]+' 高'+v[4]+'<br>';}
+          else if(q.seriesName==='量'){out+='量'+q.value+'<br>';}
+          else if(q.value!=null&&q.seriesName.indexOf('off')<0){mas.push('<span style="color:'+q.color+'">'+q.seriesName.replace('MA','M')+'</span>'+q.value);}}
+        if(mas.length)out+=mas.join(' ');
+        return out;}},
+    axisPointer:{link:[{xAxisIndex:'all'}]},
+    legend:{top:0,left:54,right:4,textStyle:{color:C.ink2,fontSize:10},itemWidth:9,itemGap:5,
+      formatter:legFmt(p),
+      data:maSeries.filter((s,j)=>p.ma[j]).map(s=>s.name)},
+    grid:[{left:54,right:12,top:26,bottom:(p.volh+13)+'%'},
+          {left:54,right:12,bottom:'7%',height:p.volh+'%'}],
+    xAxis:[{type:'category',data:d.labels,gridIndex:0,axisLine:{lineStyle:{color:'#2a2a2a'}},
+            axisLabel:{color:C.ink2,fontSize:10},axisTick:{show:false}},
+           {type:'category',data:d.labels,gridIndex:1,axisLabel:{show:false},axisTick:{show:false},
+            axisLine:{lineStyle:{color:'#2a2a2a'}}}],
+    yAxis:[{scale:true,gridIndex:0,splitLine:{lineStyle:{color:'#1c1c1c'}},
+            axisLabel:{color:C.ink2,fontSize:10}},
+           {gridIndex:1,splitLine:{show:false},axisLabel:{show:false}}],
+    dataZoom:[{type:'inside',xAxisIndex:[0,1],startValue:startI,endValue:endI,
+               throttle:40,zoomOnMouseWheel:true,moveOnMouseMove:true},
+              {type:'slider',xAxisIndex:[0,1],bottom:2,height:12,borderColor:'#2a2a2a',
+               backgroundColor:'#0d0d0d',fillerColor:'rgba(41,182,246,.18)',
+               showDataShadow:false,textStyle:{color:C.ink2,fontSize:10},startValue:startI,endValue:endI}],
+    series:[
+      {name:p.tf+'分K',type:'candlestick',data:d.ohlc,
+       markPoint:{silent:false,animation:false,z:20,data:(function(){
+         const pts=[];
+         // 回放: 畫練習單; 平時: 實倉成交只在「成交」選日後才畫 (v22 董事長 0929)
+         const FL=R.on?R.marks:(FSEL&&FILLS?FILLS.filter(x=>x.d===FSEL):null);
+         if(FL)for(const f2 of FL){
+           const b2=Math.floor(f2.t/(p.tf*60))*(p.tf*60);
+           let lo=0,hi=d.ts.length-1,ix=-1;
+           while(lo<=hi){const mid=(lo+hi)>>1;
+             if(d.ts[mid]===b2){ix=mid;break;}
+             if(d.ts[mid]<b2)lo=mid+1;else hi=mid-1;}
+           if(ix<0)continue;
+           if(f2.bs==='X'){                        // 結算日沒主動平倉: 紫色◆結 標在結算前最後一根
+             pts.push({coord:[ix,d.ohlc[ix][3]],symbol:'diamond',symbolSize:11,symbolOffset:[0,-12],
+               name:'結算到期(沒主動平) '+pidName(f2.pid)+' x'+(f2.qty==null?'?':f2.qty),
+               itemStyle:{color:'#c65fe8'},
+               label:{show:true,formatter:'結',position:'top',fontSize:9,fontWeight:700,color:'#c65fe8'}});
+             continue;}
+           const isB=f2.bs==='B';
+           pts.push({coord:[ix,isB?d.ohlc[ix][2]:d.ohlc[ix][3]],
+             symbol:'arrow',symbolSize:9,symbolRotate:isB?0:180,
+             symbolOffset:[0,isB?11:-11],
+             name:(isB?'買 ':'賣 ')+(R.on?f2.pid:pidName(f2.pid))+' @'+(f2.price==null?'?':f2.price)+' x'+(f2.qty==null?'?':f2.qty)
+               +(R.on?'':' '+new Date(f2.t*1000).toTimeString().slice(0,8)),
+             itemStyle:{color:isB?'#29b6f6':'#f0b429'},
+             label:{show:true,formatter:isB?'B':'S',position:isB?'bottom':'top',
+                    fontSize:9,fontWeight:700,color:isB?'#29b6f6':'#f0b429'}});
+         }
+         if(SIG.mark){                            // MA200訊號回放: 被選中的訊號K插黃標
+           const b2=Math.floor(SIG.mark/(p.tf*60))*(p.tf*60);
+           let lo=0,hi=d.ts.length-1,ix=-1;
+           while(lo<=hi){const mid=(lo+hi)>>1;
+             if(d.ts[mid]===b2){ix=mid;break;}
+             if(d.ts[mid]<b2)lo=mid+1;else hi=mid-1;}
+           if(ix>=0)pts.push({coord:[ix,d.ohlc[ix][3]],name:'MA200觸線訊號 '+d.labels[ix],
+             symbol:'pin',symbolSize:16,symbolOffset:[0,-9],
+             itemStyle:{color:'#ffe600'},
+             label:{show:true,formatter:'訊',fontSize:8,color:'#000',fontWeight:700}});
+         }
+         return pts;})(),
+         tooltip:{trigger:'item',formatter:(q)=>q.name}},
+       markLine:(p.cross&&p.closeVal!=null)?{silent:true,symbol:'none',animation:false,
+         label:{show:true,position:'insideEndTop',color:'#e6e9f0',fontSize:9,
+                formatter:String(p.closeVal)},
+         lineStyle:{type:'dashed',color:'rgba(230,233,240,.7)',width:1},
+         data:[{yAxis:p.closeVal}]}:{data:[]},
+       itemStyle:{color:C.up,color0:C.dn,borderColor:C.up,borderColor0:C.dn}},
+      ...maSeries,
+      {name:'量',type:'bar',xAxisIndex:1,yAxisIndex:1,data:d.vol,
+       itemStyle:{color:(q)=>{const o=d.ohlc[q.dataIndex];
+         return (o&&o[1]>=o[0])?'rgba(255,51,51,.5)':'rgba(0,200,83,.5)';}}}
+    ]};
+  p.chart.setOption(opt,{replaceMerge:['series','legend']});
+}
+function header(){
+  const d=getTF(PANELS[0].tf)||getTF(PANELS[1].tf);
+  if(!d)return;
+  const s=d.stats,el=(i)=>document.getElementById(i);
+  el('px').textContent=s.price!=null?s.price.toLocaleString():'--';
+  el('px').className='px '+(s.chg_vs_vwap>=0?'up':'dn');
+  el('sess').textContent=s.sess;
+  const age=LIVE?(Date.now()/1000-new Date(LIVE.t.replace(' ','T')).getTime()/1000):9e9;
+  if(R.on){el('ts').textContent='🎬回放 '+repClock()+(R.d&&R.d.synth?'(台指)':'')+' · v22.2';el('ts').style.color='#8bc34a';}
+  else{el('ts').style.color='';
+  el('ts').textContent=(LIVE?LIVE.t:'')+(age>300?' ⚠資料延遲':'')+(TUN?' ⚡秒級':' · 雲端60秒')+' · v22.2';}
+  el('vw').textContent=s.vwap_now!=null?s.vwap_now.toLocaleString():'--';
+  el('dv').textContent=s.chg_vs_vwap==null?'--':((s.chg_vs_vwap>=0?'+':'')+s.chg_vs_vwap+'點');
+  chainTick();
+}
+async function loadHist(){
+  try{const r=await fetch(RAW+'hist.json?ts='+Math.floor(Date.now()/600000));
+    if(r.ok){HIST=await r.json();R.hdays=null;refreshAll();}}
+  catch(e){}
+}
+function gotLive(j){
+  if(R.on){R.liveHold=j;return;}       // 回放中: 即時資料先擱著, 結束回放再接回
+  // 發現/更新隧道網址(家裡電腦廣播的秒級通道)
+  if(j&&j.tun&&j.tun!==TUN){TUN=j.tun;tunFail=0;
+    if(!tunTimer)tunTimer=setInterval(tunnelTick,2000);
+    tunnelTick();impTick();}
+  if(TUN){return;}                    // 秒級模式中: 雲端資料較舊, 只取tun不覆蓋
+  LIVE=j;refreshAll();
+}
+async function loadLive(){
+  // 分鐘檔名: live_HHMM.json 每分鐘新URL → CDN必定給最新; 往前退最多5分鐘, 全miss才用快取版live.json
+  const base=Date.now()-15000;   // 15秒生成緩衝
+  for(let k=0;k<5;k++){
+    const d=new Date(base-k*60000);
+    const nm='live_'+pad(d.getHours())+pad(d.getMinutes())+'.json';
+    try{const r=await fetch(RAW+nm);
+      if(r.ok){gotLive(await r.json());return;}}
+    catch(e){}
+  }
+  try{const r=await fetch(RAW+'live.json?ts='+Date.now());
+    if(r.ok){gotLive(await r.json());}}
+  catch(e){if(!TUN)document.getElementById('ts').textContent='連線失敗,重試中...';}
+}
+// ═ 秒級模式: 經Cloudflare隧道每2秒直取家裡的/m1(與live.json同格式) ═
+let TUN=null,tunFail=0,tunTimer=null;
+async function tunnelTick(){
+  if(!TUN||R.on)return;
+  try{
+    const r=await fetch(TUN+'/m1',{signal:AbortSignal.timeout(4000)});
+    if(!r.ok)throw 0;
+    const j=await r.json();
+    if(j&&j.bars){LIVE=j;refreshAll();tunFail=0;}
+  }catch(e){
+    if(++tunFail>=5){TUN=null;}   // 隧道死了→退回雲端60秒; live.json帶回新網址會自動歸隊
+  }
+}
+// ═ 結算座標儀表: 隱含結算K+C−P(選擇權市場定價的結算位, 30秒/次, 隧道模式限定) ═
+// 期貨在跌但這個數字不跌=基差假動作; 詳見 08_策略庫\結算日尾盤選擇權SOP_20260911.txt
+async function impTick(){
+  const el=document.getElementById('imp');
+  if(!TUN){el.textContent='';return;}
+  try{
+    const r=await fetch(TUN+'/imp',{signal:AbortSignal.timeout(4000)});
+    const j=await r.json();
+    if(j&&j.imp&&j.age<180){
+      let tx='結算座標 '+Math.round(j.imp).toLocaleString()
+        +'｜'+(j.basis>=0?'逆':'正')+'價差'+Math.abs(Math.round(j.basis))+'點';
+      if(j.rate!=null){                        // 傳導率: 10分鐘腿Δ隱含/Δ期貨(期貨動≥15點才有)
+        const pc=Math.round(j.rate*100);
+        tx+='｜傳導'+pc+'%'+(pc>=70?'真':pc<30?'假':'灰');
+      }
+      el.textContent=tx;
+      el.title='K+C−P中位數 '+j.n+'檔 序列'+j.exp+' @'+j.t
+        +(j.leg_t?('｜腿起點'+j.leg_t+' Δ期'+j.dfut+' Δ隱'+j.dimp):'');
+    }else el.textContent='';
+  }catch(e){el.textContent='';}
+}
+// ═ MA200訊號鏈燈 (2026-09-15 董事長命題: 先做訊號看結果, 純顯示不建倉) ═
+// 鏈=乾淨條(距上次穿越分鐘)+觸線表態(觸線後5分鐘: 插穿35點→85%穿, 推回30點→78%彈)
+// 回測: 燈單獨為負, 乾淨≥60分+時段0900-1205+結構式出場才轉正(n小); 詳見策略庫20260914
+let chainLast=0,chainPrev='',chainAC=null;
+function chainBeep(nb){                              // 提醒: 震動+嗶(表態1聲/確認2聲)
+  try{navigator.vibrate&&navigator.vibrate(nb===1?[180]:[180,90,180]);}catch(e){}
+  try{
+    if(!chainAC)chainAC=new (window.AudioContext||window.webkitAudioContext)();
+    if(chainAC.state==='suspended')chainAC.resume();
+    for(let i=0;i<nb;i++){
+      const o=chainAC.createOscillator(),g=chainAC.createGain();
+      o.frequency.value=880;o.connect(g);g.connect(chainAC.destination);
+      const t0=chainAC.currentTime+i*0.25;
+      g.gain.setValueAtTime(0.12,t0);g.gain.exponentialRampToValueAtTime(0.001,t0+0.18);
+      o.start(t0);o.stop(t0+0.2);
+    }
+  }catch(e){}
+}
+function chainBlink(el){
+  let k=0;const iv=setInterval(function(){el.style.opacity=(k%2)?'1':'0.15';if(++k>7){clearInterval(iv);el.style.opacity='1';}},250);
+}
+['touchstart','click'].forEach(function(evn){document.addEventListener(evn,function(){
+  try{if(!chainAC)chainAC=new (window.AudioContext||window.webkitAudioContext)();
+  chainAC.resume&&chainAC.resume();}catch(e){}},{once:true});});
+function chainTick(){
+  const el=document.getElementById('chain');
+  if(!el)return;
+  const now=Date.now();
+  if(now-chainLast<5000)return;
+  chainLast=now;
+  if(M1.length<420){el.textContent='';return;}
+  const tail=M1.slice(-460);                       // 200(MA窗)+~260(評估/回看)
+  const n=tail.length,cl=tail.map(b=>b[4]);
+  let sum=0;for(let i=0;i<200;i++)sum+=cl[i];
+  const dd=new Array(n).fill(null);                // 收盤-連續SMA200(與圖同一條線)
+  const sma=new Array(n).fill(null);
+  for(let i=199;i<n;i++){
+    if(i>199)sum+=cl[i]-cl[i-200];
+    sma[i]=sum/200;dd[i]=cl[i]-sma[i];
+  }
+  const j=n-1,first=199;
+  let clean=120;                                   // 距上次收盤穿越幾分鐘(封頂120)
+  for(let k=j;k>first;k--){
+    if((dd[k]>0)!==(dd[k-1]>0)){clean=j-k;break;}
+  }
+  let ev=null;                                     // 觸線事件狀態機(與回測同款定義)
+  for(let i=Math.max(first+1,j-90);i<=j;i++){
+    if(Math.abs(dd[i])>15)continue;
+    let s=0;
+    for(let k=i-1;k>=Math.max(first,i-60);k--){
+      if(Math.abs(dd[k])>=80){s=dd[k]>0?1:-1;break;}
+      if((dd[k]>0)!==(dd[i]>0)&&Math.abs(dd[k])>15)break;
+    }
+    if(!s)continue;
+    let res=null,end=i;
+    for(let k=i+1;k<=Math.min(i+45,j);k++){
+      if(dd[k]*(-s)>=50){res='B';end=k;break;}
+      if(dd[k]*s>=80){res='H';end=k;break;}
+    }
+    ev={i,s,res,end};
+    if(res)i=end;else break;                       // 未解決=進行中, 停在這個事件
+  }
+  const d0=new Date(tail[j][0]*1000),hm=d0.getHours()*60+d0.getMinutes();
+  const inWin=hm>=540&&hm<=725;                    // 09:00~12:05
+  const dist=Math.round(dd[j]);
+  const slope=(j-60>=199&&sma[j-60]!==null)?Math.round(sma[j]-sma[j-60]):0; // MA200每小時斜率
+  const steep=Math.abs(slope)>=50;
+  let tx='',col='#9aa0a6',tip='',key='';
+  if(ev&&!ev.res&&j-ev.i<=45){
+    const s=ev.s,b=j-ev.i;
+    let pen=0,ret=0;
+    for(let k=ev.i+1;k<=j;k++){pen=Math.max(pen,dd[k]*(-s));ret=Math.max(ret,dd[k]*s);}
+    const brkA=s>0?'↓':'↑',brkC=s>0?'#00c853':'#ff3333';
+    const bncA=s>0?'↑':'↓',bncC=s>0?'#ff3333':'#00c853';
+    const againstSlope=steep&&((s>0&&slope>0)||(s<0&&slope<0)); // 逆著陡坡攻線: 62%被護
+    if(pen>=35){tx='鏈｜穿越'+brkA+'確認85%';col=brkC;key='brk'+s;
+      if(againstSlope)tx+='·逆坡';}
+    else if(ret>=30){tx='鏈｜彈回'+bncA+'78%';col=bncC;key='bnc'+s;}
+    else if(b<5){tx='鏈｜觸線 表態'+b+'/5';col='#ffe600';key='touch';
+      if(againstSlope)tx+='·護線';}
+    else{tx='鏈｜黏線'+b+'分';col='#6b7075';if(againstSlope)tx+='·護線';}
+    if(!inWin)tx+='·時段外';
+    tip='觸線'+lbl(tail[ev.i][0]+60)+' 從'+(s>0?'上方':'下方')+'來｜插穿'+Math.round(pen)
+      +'點 推回'+Math.round(ret)+'點｜乾淨'+(clean>=120?'120+':clean)+'分'
+      +'｜MA200斜率'+(slope>0?'+':'')+slope+'/hr'+(againstSlope?'(陡坡護線62%彈)':'')
+      +'｜黏線≥8分未破只剩39%會穿';
+  }else if(ev&&ev.res&&j-ev.end<=15){
+    tx='鏈｜'+(ev.res==='B'?('穿越'+(ev.s>0?'↓':'↑')+'完成'):('彈回'+(ev.s>0?'↑':'↓')+'完成'));
+    col=ev.res==='B'?(ev.s>0?'#00c853':'#ff3333'):(ev.s>0?'#ff3333':'#00c853');
+    tip='事件已解決'+(j-ev.end)+'分鐘｜乾淨計時重新累積中';
+  }else{
+    const cs=clean>=120?'120+':''+clean;
+    if(Math.abs(dist)<=30){tx='鏈｜貼線 乾淨'+cs+'分';col='#9aa0a6';}
+    else if(clean<30){tx='鏈｜洗價'+cs+'分·距'+(dist>0?'+':'')+dist;col='#6b7075';}
+    else{tx='鏈｜乾淨'+cs+'分·距'+(dist>0?'+':'')+dist;col=clean>=60?'#9aa0a6':'#6b7075';}
+    tip='距上次MA200穿越'+cs+'分鐘｜距線'+(dist>0?'+':'')+dist+'點'
+      +'｜MA200斜率'+(slope>0?'+':'')+slope+'/hr'
+      +(steep&&((dd[j]<0&&slope<0)||(dd[j]>0&&slope>0))?'(陡坡護線: 逆坡攻線62%被彈)':'')
+      +'｜可打條件=乾淨≥60分+時段0900~1205的觸線表態｜純顯示不建倉';
+  }
+  el.textContent=tx;el.style.color=col;el.title=tip;
+  if(key&&key!==chainPrev){chainBeep(key==='touch'?1:2);chainBlink(el);} // 表態1嗶/確認2嗶
+  chainPrev=key;
+}
+async function loadFills(){
+  try{const r=await fetch(RAW+'fills.json?ts='+Math.floor(Date.now()/300000));
+    if(r.ok){FILLS=await r.json();PANELS.forEach(draw);}}catch(e){}
+}
+// ═ 實倉成交選日顯示 v22 (2026-09-29 董事長): 平時看盤不畫, 按「成交」選日才畫該交易日(日盤+當晚夜盤)進出 ═
+function pidName(p){                             // TXY47950U6 -> F4 47950P
+  const m=/^TX(.)(\d+)([A-X])\d$/.exec(p||'');
+  if(p==='?C'||p==='?P')return '(商品未記錄·推定'+(p==='?C'?'買權':'賣權')+')';
+  if(!m)return (p&&p!=='?')?p:'(商品未記錄)';
+  const w={'1':'W1','2':'W2','O':'月','4':'W4','5':'W5','U':'F1','V':'F2','X':'F3','Y':'F4','Z':'F5'}[m[1]]||m[1];
+  return w+' '+m[2]+(m[3]<'M'?'C':'P');
+}
+function fillDays(){
+  const g=new Map();
+  for(const f of FILLS||[]){if(!f.d)continue;
+    const x=g.get(f.d)||{n:0,x:0};if(f.bs==='X')x.x++;else x.n++;g.set(f.d,x);}
+  return [...g.entries()].sort((a,b)=>a[0]<b[0]?1:-1);
+}
+function renderFillPanel(){
+  const el=document.getElementById('sigPanel');
+  const wd=d=>'日一二三四五六'[new Date(+d.slice(0,4),+d.slice(4,6)-1,+d.slice(6)).getDay()];
+  const days=fillDays();
+  el.innerHTML='<div class="sighd">選日看實際進出｜B買 S賣 <span style="color:#c65fe8">◆結</span>=結算沒平'
+    +'<span id="fillX" style="margin-left:auto;cursor:pointer;padding:0 5px">✕</span></div>'
+    +'<div class="sigitem" data-d="" style="color:#9aa0a6">'+(FSEL?'◯ 不顯示(回平時看盤)':'● 目前不顯示')+'</div>'
+    +(days.length?days.map(([d,x])=>'<div class="sigitem" data-d="'+d+'"'+(d===FSEL?' style="background:#1c2a33"':'')+'>'
+      +d.slice(4,6)+'/'+d.slice(6)+'('+wd(d)+')｜'+(x.n?x.n+'筆':'')
+      +(x.x?' <span style="color:#c65fe8">◆結'+x.x+'</span>':'')+'</div>').join('')
+     :'<div class="sigitem" style="cursor:default;color:#9aa0a6">成交紀錄載入中或沒有資料</div>');
+  el.querySelector('#fillX').onclick=()=>{el.style.display='none';};
+  el.querySelectorAll('.sigitem[data-d]').forEach(it=>it.onclick=()=>{
+    fillSel(it.dataset.d||null);el.style.display='none';});
+}
+function fillSel(d){
+  FSEL=d;const b=document.getElementById('fillBtn');
+  b.textContent=d?'成交 '+d.slice(4,6)+'/'+d.slice(6):'成交';b.classList.toggle('on',!!d);
+  if(!d){PANELS.forEach(draw);return;}
+  const fs=(FILLS||[]).filter(x=>x.d===d);
+  jumpTo(fs.length?fs[0].t:Date.now()/1000,()=>BARS);   // 跳到當日第一筆, 其餘左右拖
+}
+document.getElementById('fillBtn').onclick=()=>{
+  const el=document.getElementById('sigPanel');
+  if(el.style.display==='block'&&el.dataset.m==='fill'){el.style.display='none';return;}
+  el.dataset.m='fill';
+  el.style.top=(document.querySelector('.hdr').offsetHeight+6)+'px';
+  renderFillPanel();el.style.display='block';
+};
+// ═ 回放練習模式 v21 (2026-09-19 董事長核准「做」) ═
+// 選日或盲抽 → 該日08:45起像看盤一樣逐5秒走(之前的K照常顯示, 之後的一根都看不到)
+// 下單=市價: 選擇權吃「當時真實五檔」(有錄影的日子; 五檔超過1分鐘沒更新則改掛下一分鐘開盤), 期貨=最新價±1tick
+// 部位只顯示方向/口數/均價, 不顯示浮動損益(紀律); 收盤或按結束→成績單: 損益+四關+「照規則出場」對照
+Object.assign(R,{speed:10,timer:null,idx:0,bi:0,cur:0,pos:{},trades:[],pend:[],log:[],index:[],done:false,last:null,optKeys:[],sel:'F'});
+const MULT=50;                                  // 每點50元(選擇權/小台)
+function repClock(){if(!R.d)return '';const d=new Date((R.d.t0+R.cur)*1000);
+  return (R.blind?'':R.d.date+' ')+pad(d.getHours())+':'+pad(d.getMinutes())+':'+pad(d.getSeconds());}
+async function repLoadIndex(){
+  try{const r=await fetch(RAW+'replay_index.json?ts='+Math.floor(Date.now()/600000));if(r.ok)R.index=await r.json();}catch(e){}
+}
+function repHistDays(){                          // hist.json裡有日盤K的所有日期(90天) → 可做台指回放
+  if(R.hdays)return R.hdays;
+  const s=new Map();
+  if(HIST)for(const b of HIST.bars){const d=new Date(b[0]*1000),hm=d.getHours()*60+d.getMinutes();
+    if(hm<525||hm>=825)continue;
+    const k=''+d.getFullYear()+pad(d.getMonth()+1)+pad(d.getDate());s.set(k,(s.get(k)||0)+1);}
+  R.hdays=new Map([...s].filter(x=>x[1]>=100));   // 至少100根=完整日盤
+  return R.hdays;
+}
+function repSynth(ymd){                          // 沒有錄影的日子: 用hist.json的1分K合成台指回放(每根展開4點)
+  const y=+ymd.slice(0,4),mo=+ymd.slice(4,6)-1,dd=+ymd.slice(6);
+  const t0=new Date(y,mo,dd,8,45).getTime()/1000,t1=new Date(y,mo,dd,13,45).getTime()/1000;
+  const px=[];
+  if(HIST)for(const b of HIST.bars){
+    if(b[0]<t0||b[0]>t1)continue;
+    const off=b[0]-t0,q=Math.round(b[5]/4);
+    const seq=b[4]>=b[1]?[b[1],b[3],b[2],b[4]]:[b[1],b[2],b[3],b[4]];
+    for(let i=0;i<4;i++)px.push([off+i*15,seq[i],q]);
+  }
+  if(!px.length)return null;
+  return {date:y+'-'+pad(mo+1)+'-'+pad(dd),fut:'',exp:null,t0:t0,t1:t1,px:px,strikes:[],opt:{},book:[],synth:true};
+}
+async function repStart(ymd,blind){
+  const el=document.getElementById('repPanel');el.innerHTML='<div class="row">載入 '+(blind?'盲抽':ymd)+' 回放資料…</div>';
+  let d=null;
+  if((R.index||[]).some(x=>x.date===ymd)){       // 有錄影的日子: 完整版(選擇權+五檔)
+    try{const r=await fetch(RAW+'replay_'+ymd+'.json?ts='+Math.floor(Date.now()/3600000));if(r.ok)d=await r.json();}catch(e){}
+  }
+  if(!d)d=repSynth(ymd);                         // 其餘: 用hist.json合成台指版
+  if(!d){el.innerHTML='<div class="row">沒有 '+ymd+' 的資料(非交易日或超過90天)</div>';setTimeout(()=>{R.calOpen=false;repPanelRender();},1500);return;}
+  Object.assign(R,{d:d,on:true,blind:!!blind,calOpen:false,cur:0,idx:0,bi:0,bars:new Map(),marks:[],pos:{},trades:[],pend:[],log:[],done:false,last:null,mini:true,qty:R.qty||1});
+  const dd=new Date(d.t0*1000);R.day0=new Date(dd.getFullYear(),dd.getMonth(),dd.getDate());
+  R.optKeys=Object.keys(d.opt||{}).sort((a,b)=>a[0]!==b[0]?(a<b?-1:1):(+a.slice(1)-+b.slice(1)));
+  const p0=d.px.length?d.px[0][1]:0,atm='C'+(Math.round(p0/50)*50-200);   // 預設選ATM附近的C(期貨-基差約200)
+  R.sel=R.optKeys.includes(atm)?atm:(R.optKeys.length?R.optKeys[Math.floor(R.optKeys.length/4)]:'F');
+  SIG.mark=null;PANELS.forEach(p=>{p.win=null;p.chart.clear();});
+  repAdvance(0);repRender();
+}
+function repBarPush(off,px,qty){                // 5秒點 → 1分K [ts,o,h,l,c,v,pv]
+  const ts=R.d.t0+Math.floor(off/60)*60;let b=R.bars.get(ts);
+  if(!b){b=[ts,px,px,px,px,0,0];R.bars.set(ts,b);}
+  if(px>b[2])b[2]=px;if(px<b[3])b[3]=px;b[4]=px;b[5]+=qty;b[6]+=px*qty;
+}
+function repAdvance(sec){                       // 游標前進sec秒: 消化價格點/五檔指標/掛單
+  const d=R.d,px=d.px,end=d.t1-d.t0;
+  R.cur=Math.min(end,R.cur+sec);
+  while(R.idx<px.length&&px[R.idx][0]<=R.cur){const p=px[R.idx];repBarPush(p[0],p[1],p[2]);R.last=p[1];repFillPending(p);R.idx++;}
+  while(R.bi<d.book.length&&d.book[R.bi][0]<=R.cur)R.bi++;
+  mergeBars();
+  if(R.cur>=end&&!R.done){R.done=true;repPause();repFlatAll('收盤強制平倉');}
+}
+function repBookNow(){return R.bi>0?R.d.book[R.bi-1]:null;}
+function repOptBar(key,m){const rows=R.d.opt[key]||[];for(const r of rows){if(r[0]===m)return r;if(r[0]>m)break;}return null;}
+function repOptLast(key){                       // 不偷看: 本分鐘只用開盤價, 否則上一根完整分鐘收盤
+  const rows=R.d.opt[key]||[],m=Math.floor(R.cur/60);let last=null;
+  for(const r of rows){if(r[0]<m)last=r[4];else if(r[0]===m)return r[1];else break;}
+  return last;
+}
+function repOrder(key,side,qty){
+  if(!R.on||R.done||!(qty>0))return;
+  const m=Math.floor(R.cur/60);
+  if(key==='F'){if(R.last==null)return;repFill(key,side,qty,R.last+(side==='B'?1:-1),'市價±1tick');repRender();return;}
+  const bk=repBookNow(),snap=bk&&bk[1][key];
+  if(snap&&(R.cur-bk[0])<=60){                  // 近1分鐘內的真實五檔 → 逐檔吃(IOC)
+    const pr=side==='B'?snap[2]:snap[0],qs=side==='B'?snap[3]:snap[1];let rem=qty;
+    for(let i=0;i<5&&rem>0;i++){const p=pr[i],q=qs[i];if(!p||!q)continue;const t=Math.min(rem,q);repFill(key,side,t,p,'吃五檔'+(i+1));rem-=t;}
+    if(rem>0)R.log.push(repClock()+' '+key+' 五檔量不足, '+rem+'口未成交');
+  }else{R.pend.push({key,side,qty,m});R.log.push(repClock()+' '+key+(side==='B'?' 買':' 賣')+qty+'口 掛下一分鐘開盤');}
+  repRender();
+}
+function repFillPending(p){                      // 新分鐘第一個價格點到 → 掛單以該分鐘選擇權開盤成交
+  if(!R.pend.length)return;const m=Math.floor(p[0]/60);
+  R.pend=R.pend.filter(o=>{
+    if(m<=o.m)return true;
+    const bar=repOptBar(o.key,m);
+    if(!bar){if(m-o.m>5){R.log.push(o.key+' 5分鐘無成交, 掛單取消');return false;}return true;}
+    repFill(o.key,o.side,o.qty,bar[1],'下一分開盤',R.d.t0+m*60);return false;   // 成交時間=那一分鐘, 不是游標
+  });
+}
+function repFill(key,side,qty,px,how,tAt){
+  const t=tAt!=null?tAt:(R.d.t0+R.cur),signed=side==='B'?qty:-qty,nm=key==='F'?'期貨':key;
+  R.marks.push({t:t,bs:side,pid:nm,price:px,qty:qty});
+  R.log.push(fmtT(t)+' '+(side==='B'?'買':'賣')+nm+' '+qty+'口 @'+px+' ('+how+')');
+  let pos=R.pos[key];
+  if(!pos){R.pos[key]={qty:signed,avg:px,t:t};return;}
+  if(pos.qty*signed>0){pos.avg=+((pos.avg*Math.abs(pos.qty)+px*qty)/(Math.abs(pos.qty)+qty)).toFixed(2);pos.qty+=signed;return;}
+  const cq=Math.min(Math.abs(pos.qty),qty),wasL=pos.qty>0;
+  R.trades.push({key:nm,dir:wasL?'多':'空',qty:cq,tin:pos.t,pin:pos.avg,tout:t,pout:px,pnl:Math.round((px-pos.avg)*MULT*cq*(wasL?1:-1))});
+  const nq=pos.qty+signed;
+  if(nq===0)delete R.pos[key];else{pos.qty=nq;if((nq>0)!==wasL){pos.avg=px;pos.t=t;}}
+}
+function repFlatAll(why){
+  for(const k of Object.keys(R.pos)){const p=R.pos[k];let px=k==='F'?R.last:repOptLast(k);if(px==null)px=p.avg;
+    repFill(k,p.qty>0?'S':'B',Math.abs(p.qty),px,why);}
+}
+function repPlay(){if(R.timer||R.done)return;R.timer=setInterval(()=>{repAdvance(5);repRender();},Math.max(100,5000/R.speed));repPanelRender();}
+function repPause(){if(R.timer){clearInterval(R.timer);R.timer=null;}}
+function repRender(){PANELS.forEach(draw);header();repPanelRender();}
+function repExit(){
+  repPause();R.on=false;R.d=null;R.bars=new Map();R.marks=[];
+  mergeBars();PANELS.forEach(p=>{p.win=null;p.chart.clear();});
+  if(R.liveHold){const j=R.liveHold;R.liveHold=null;gotLive(j);}
+  PANELS.forEach(draw);header();document.getElementById('repPanel').style.display='none';loadLive();
+}
+function fmtT(t){const d=new Date(t*1000);return pad(d.getHours())+':'+pad(d.getMinutes());}
+function repReport(){                            // 成績單: 四關 + 照規則(5分MA10追蹤)出場對照
+  const tr=R.trades;if(!tr.length)return '<div class="row">沒有交易</div>';
+  const d1=getTF(1),d5=getTF(5);
+  const c1=d1?d1.ohlc.map(v=>v[1]):[],ma20=sma(c1,20);
+  const c5=d5?d5.ohlc.map(v=>v[1]):[],ma10=sma(c5,10);
+  const idx1=t=>{let lo=0,hi=d1.ts.length-1;while(lo<hi){const m=(lo+hi)>>1;if(d1.ts[m]<t)lo=m+1;else hi=m;}return lo;};
+  const optPx=(key,t)=>{const m=Math.floor((t-R.d.t0)/60);const rows=R.d.opt[key]||[];let last=null;
+    for(const r of rows){if(r[0]<m)last=r[4];else if(r[0]===m)return r[1];else break;}return last;};
+  let tot=0,flags={時間:0,情緒:0,口數:0,位置:0},rows='',ruleTot=0,prev=null;
+  for(const x of tr){
+    tot+=x.pnl;const hmIn=new Date(x.tin*1000);const hm=hmIn.getHours()*60+hmIn.getMinutes();
+    const f=[];
+    if(hm>=735){f.push('時間');flags.時間++;}
+    if(prev&&x.tin-prev.tout<600&&x.tin>prev.tout-1){f.push('情緒');flags.情緒++;}
+    if(prev&&prev.pnl<0&&x.qty>prev.qty){f.push('口數');flags.口數++;}
+    if(d1){const i=idx1(x.tin);if(ma20[i]!=null&&Math.abs(c1[i]-ma20[i])<=15){f.push('位置');flags.位置++;}}
+    // 規則出場: 進場後第一根「收完的5分K」收盤反向穿5分MA10 → 該5分K收完的下一分鐘出場
+    let rule='—',rulePnl=null;
+    const bull=(x.dir==='多')!==(x.key[0]==='P');     // 看多指數? 買P/賣C=看空
+    if(d5){let i5=0;while(i5<d5.ts.length&&d5.ts[i5]+300<=x.tin)i5++;   // 進場時進行中的5分K之後
+      for(let k=i5;k<d5.ts.length;k++){const tclose=d5.ts[k]+300;if(tclose>R.d.t1)break;if(ma10[k]==null)continue;
+        const against=bull?c5[k]<ma10[k]:c5[k]>ma10[k];
+        if(against&&tclose>x.tin){const tx=tclose;let px=x.key==='期貨'?(()=>{const i=idx1(tx);return d1.ohlc[i][0];})():optPx(x.key,tx);
+          if(px!=null){rulePnl=Math.round((px-x.pin)*MULT*x.qty*(x.dir==='多'?1:-1));rule=fmtT(tx)+' @'+px+' → '+(rulePnl>=0?'+':'')+rulePnl.toLocaleString();}break;}}
+      if(rulePnl==null){const px=x.key==='期貨'?R.last:optPx(x.key,R.d.t1-60);if(px!=null){rulePnl=Math.round((px-x.pin)*MULT*x.qty*(x.dir==='多'?1:-1));rule='抱到收盤 @'+px+' → '+(rulePnl>=0?'+':'')+rulePnl.toLocaleString();}}}
+    if(rulePnl!=null)ruleTot+=rulePnl;
+    rows+='<tr><td>'+x.key+'</td><td>'+x.dir+x.qty+'</td><td>'+fmtT(x.tin)+' @'+x.pin+'</td><td>'+fmtT(x.tout)+' @'+x.pout+'</td>'
+      +'<td class="'+(x.pnl>=0?'buy':'sell')+'">'+(x.pnl>=0?'+':'')+x.pnl.toLocaleString()+'</td><td>'+(f.length?f.join('/'):'✓')+'</td><td style="text-align:left">'+rule+'</td></tr>';
+    prev=x;
+  }
+  const txt='📋成績單 '+(R.blind?R.d.date+'(盲抽揭曉)':R.d.date)+'｜'+tr.length+'筆 合計'+(tot>=0?'+':'')+tot.toLocaleString()+'元'
+    +'｜四關違規 時間'+flags.時間+' 情緒'+flags.情緒+' 口數'+flags.口數+' 位置'+flags.位置
+    +'｜同進場照規則(5分MA10)出場合計'+(ruleTot>=0?'+':'')+ruleTot.toLocaleString()+'元';
+  try{const L=JSON.parse(localStorage.getItem('txf_replay_log')||'[]');L.push({at:new Date().toISOString().slice(0,16),date:R.d.date,n:tr.length,pnl:tot,rule:ruleTot,flags:flags});
+    localStorage.setItem('txf_replay_log',JSON.stringify(L.slice(-100)));}catch(e){}
+  return '<div class="row" style="color:#ffe600">'+txt+'</div><div style="overflow-x:auto"><table><tr><th>商品</th><th>方向</th><th>進</th><th>出</th><th>損益</th><th>四關</th><th style="text-align:left">照規則出場</th></tr>'+rows+'</table></div>'
+    +'<div class="row" style="color:#9aa0a6">四關: 時間=12:15後進場｜情緒=平倉10分內再進｜口數=上筆虧損後加口｜位置=進場時距1分MA20≤15(洗價區)</div>';
+}
+function repPanelRender(){
+  const el=document.getElementById('repPanel');if(el.style.display!=='block')return;
+  if(!R.on){
+    const wd=s=>'日一二三四五六'[new Date(+s.slice(0,4),+s.slice(4,6)-1,+s.slice(6)).getDay()];
+    const optDays=new Set((R.index||[]).filter(x=>x.opt).map(x=>x.date));
+    if(R.calOpen){                                // 月曆: 綠=有選擇權可下單, 白=只有台指, 灰=無資料
+      const ym=R.calYM||(()=>{const a=[...repHistDays().keys()].sort();return (a[a.length-1]||'202609').slice(0,6);})();
+      R.calYM=ym;const y=+ym.slice(0,4),mo=+ym.slice(4,6)-1;
+      const first=new Date(y,mo,1),last=new Date(y,mo+1,0),hd=repHistDays();
+      let h='<div class="row"><button class="repbtn" id="calP">‹</button><b>'+y+'-'+pad(mo+1)+'</b><button class="repbtn" id="calN">›</button>'
+        +'<span style="color:#8bc34a">●選擇權</span><span style="color:#e8e8e8">○台指</span>'
+        +'<button class="repbtn" id="calBack">返回</button><span style="margin-left:auto;cursor:pointer;padding:0 6px" id="repX">✕</span></div>'
+        +'<table style="width:100%"><tr>'+['日','一','二','三','四','五','六'].map(x=>'<th style="text-align:center;color:#9aa0a6">'+x+'</th>').join('')+'</tr><tr>';
+      for(let i=0;i<first.getDay();i++)h+='<td></td>';
+      let col=first.getDay();
+      for(let dd=1;dd<=last.getDate();dd++){
+        const ymd=''+y+pad(mo+1)+pad(dd);
+        const full=optDays.has(ymd),has=full||hd.has(ymd);
+        h+='<td style="text-align:center">'+(has
+          ?'<span class="chip" data-cd="'+ymd+'" style="color:'+(full?'#8bc34a':'#e8e8e8')+'">'+dd+'</span>'
+          :'<span style="color:#3a3a3a">'+dd+'</span>')+'</td>';
+        if(++col%7===0)h+='</tr><tr>';
+      }
+      el.innerHTML=h+'</tr></table><div class="row" style="color:#9aa0a6;font-size:11px">綠色=有選擇權與五檔錄影(可下選擇權)｜白色=只有台指K線(下台指期)｜共'+hd.size+'天可回放</div>';
+      el.querySelectorAll('[data-cd]').forEach(c=>c.onclick=()=>{R.calOpen=false;repStart(c.dataset.cd,false);});
+      el.querySelector('#calP').onclick=()=>{const t=new Date(y,mo-1,1);R.calYM=''+t.getFullYear()+pad(t.getMonth()+1);repPanelRender();};
+      el.querySelector('#calN').onclick=()=>{const t=new Date(y,mo+1,1);R.calYM=''+t.getFullYear()+pad(t.getMonth()+1);repPanelRender();};
+      el.querySelector('#calBack').onclick=()=>{R.calOpen=false;repPanelRender();};
+      el.querySelector('#repX').onclick=()=>{el.style.display='none';};
+      return;
+    }
+    const chips=(R.index||[]).slice().reverse().map(x=>'<span class="chip" data-d="'+x.date+'" style="color:'+(x.opt?'#8bc34a':'#e8e8e8')+'">'+x.date.slice(4,6)+'/'+x.date.slice(6)+'('+wd(x.date)+')</span>').join(' ');
+    el.innerHTML='<div class="row"><b style="color:#8bc34a">🎬回放練習</b><span style="color:#9aa0a6">選一天從08:45開始走, 之後的K看不到</span></div>'
+      +'<div class="row">近期錄影日 '+(chips||'<span style="color:#9aa0a6">(無)</span>')+'</div>'
+      +'<div class="row"><input id="repYmd" placeholder="20260918" inputmode="numeric" style="width:100px"><button class="repbtn" id="repCal">📅月曆</button><button class="repbtn" id="repGo">開始</button><button class="repbtn warn" id="repBlind">盲抽</button><span style="margin-left:auto;cursor:pointer;padding:0 6px" id="repX">✕</span></div>'
+      +'<div class="row" style="color:#9aa0a6;font-size:11px">綠色=有選擇權可下單; 其餘日子(近90天)可回放台指期</div>';
+    el.querySelectorAll('.chip').forEach(c=>c.onclick=()=>{repStart(c.dataset.d,false);});
+    el.querySelector('#repCal').onclick=()=>{R.calOpen=true;repPanelRender();};
+    el.querySelector('#repGo').onclick=()=>{const v=el.querySelector('#repYmd').value.trim();if(/^\d{8}$/.test(v))repStart(v,false);};
+    el.querySelector('#repBlind').onclick=()=>{const L=[...repHistDays().keys()];if(!L.length)return;repStart(L[Math.floor(Math.random()*L.length)],true);};
+    el.querySelector('#repX').onclick=()=>{el.style.display='none';};
+    return;
+  }
+  const bk=repBookNow(),stale=bk?(R.cur-bk[0]>60):true;
+  // 券商式排版(董事長0920): 買一與賣一同一列對齊, 左買右賣, 第1檔在最上
+  const bookTbl=(snap,title)=>'<div><div style="color:#9aa0a6;font-size:10px">'+title+'</div><table style="font-size:11px">'
+    +'<tr><th style="color:#9aa0a6;font-weight:400">量</th><th class="buy" style="font-weight:400">買</th><th class="sell" style="font-weight:400">賣</th><th style="color:#9aa0a6;font-weight:400">量</th></tr>'
+    +[0,1,2,3,4].map(i=>'<tr><td>'+(snap[1][i]||'')+'</td><td class="buy">'+(snap[0][i]||'')+'</td><td class="sell">'+(snap[2][i]||'')+'</td><td>'+(snap[3][i]||'')+'</td></tr>').join('')+'</table></div>';
+  let book='';                                   // 左: 選中的選擇權五檔; 右: 台指期五檔('F', feeder v2.2起錄影才有)
+  const so=bk&&R.sel!=='F'?bk[1][R.sel]:null, sf=bk?bk[1]['F']:null;
+  if(R.sel!=='F')book+=so?bookTbl(so,R.sel)+(stale?'<div style="color:#ff9100;font-size:10px">五檔>1分鐘未更新→掛下一分鐘開盤</div>':''):'<div style="color:#9aa0a6;font-size:10px">'+R.sel+'無五檔錄影<br>市價=下一分鐘開盤</div>';
+  book+=sf?bookTbl(sf,'台指期'):'<div style="color:#9aa0a6;font-size:10px">台指五檔<br>'+(R.d.book.length?'(9/22起的回放日才有)':'(這天無五檔錄影)')+'</div>';
+  const opts='<option value="F"'+(R.sel==='F'?' selected':'')+'>期貨(小台1點50元)</option>'+R.optKeys.map(k=>'<option value="'+k+'"'+(k===R.sel?' selected':'')+'>'+k+'</option>').join('');
+  const posRows=Object.keys(R.pos).map(k=>{const p=R.pos[k];return '<tr><td>'+(k==='F'?'期貨':k)+'</td><td class="'+(p.qty>0?'buy':'sell')+'">'+(p.qty>0?'多':'空')+Math.abs(p.qty)+'</td><td>@'+p.avg+'</td><td>'+fmtT(p.t)+'</td><td><button class="repbtn" data-flat="'+k+'">平倉</button></td></tr>';}).join('');
+  const realized=R.trades.reduce((s,x)=>s+x.pnl,0);
+  const ctl='<b id="rpHandle" style="color:#8bc34a;cursor:move;touch-action:none;padding:2px 4px;border:1px dashed #2e4a20;border-radius:4px">✥🎬'+repClock()+'</b> 價'+(R.last==null?'--':R.last)
+    +'<button class="repbtn" id="rpPlay">'+(R.timer?'⏸':'▶')+'</button><button class="repbtn" id="rp1">+1</button><button class="repbtn" id="rp5">+5</button>'
+    +'<button class="repbtn" id="rpZm" title="縮小">－</button><button class="repbtn" id="rpZp" title="放大">＋</button>';   // 縮放鈕: 一列模式也有
+  const order='<select id="rpSel">'+opts+'</select><input id="rpQty" type="number" min="1" max="20" value="'+(R.qty||1)+'" style="width:40px">'
+    +'<button class="repbtn buy" id="rpBuy" style="border-color:#ff3333">買</button><button class="repbtn sell" id="rpSell" style="border-color:#00c853">賣</button>';
+  if(R.mini&&!R.done){                            // 縮小: 只剩一條操作列, 不擋圖 (董事長0919要求)
+    el.style.maxHeight='none';
+    el.innerHTML='<div class="row">'+ctl+order+'<span style="color:#9aa0a6">'+(Object.keys(R.pos).length?Object.keys(R.pos).map(k=>{const p=R.pos[k];return (k==='F'?'期':k)+(p.qty>0?'多':'空')+Math.abs(p.qty);}).join(' '):'無部位')+'</span>'
+      +'<button class="repbtn" id="rpMax" style="margin-left:auto">展開</button></div>';
+  }else{
+    el.style.maxHeight='70vh';
+    el.innerHTML='<div class="row">'+ctl+'<button class="repbtn" id="rp0">⏮</button>'
+      +'<select id="rpSpd">'+[1,5,10,30,60].map(s=>'<option value="'+s+'"'+(s===R.speed?' selected':'')+'>'+s+'x</option>').join('')+'</select>'
+      +'<button class="repbtn warn" id="rpEnd">'+(R.done?'退出回放':'結束')+'</button>'
+      +(R.done?'':'<button class="repbtn" id="rpMin">縮小</button>')
+      +'<input id="rpZoom" type="range" min="50" max="160" value="'+(R.zoom||100)+'" title="縮放" style="width:60px">'
+      +'<span style="cursor:pointer;padding:0 6px" id="rpX">✕</span></div>'
+      +(R.done?repReport():'')
+      +'<div class="row">'+order+'<span style="color:#9aa0a6">已實現 '+(realized>=0?'+':'')+realized.toLocaleString()+'元</span></div>'
+      +'<div class="row" style="align-items:flex-start;gap:12px">'+book+'</div>'
+      +'<div class="row" style="overflow-x:auto">'
+      +(posRows?'<table><tr><th>部位</th><th>方向</th><th>均價</th><th>進場</th><th></th></tr>'+posRows+'</table>':'<span style="color:#9aa0a6">無部位</span>')
+      +'</div>'
+      +'<div class="row" style="color:#9aa0a6;font-size:11px;display:block">'+R.log.slice(-4).join('<br>')+'</div>';
+  }
+  const on=(id,fn)=>{const x=el.querySelector('#'+id);if(x)x.onclick=fn;};
+  repDrag(el);
+  const setZoom=z=>{R.zoom=Math.max(50,Math.min(160,z));el.style.zoom=R.zoom/100;try{localStorage.setItem('txf_rep_zoom',R.zoom);}catch(_){}
+    const s=el.querySelector('#rpZoom');if(s)s.value=R.zoom;};
+  const zm=el.querySelector('#rpZoom');if(zm)zm.oninput=e=>setZoom(+e.target.value);
+  on('rpZm',()=>setZoom((R.zoom||100)-10));
+  on('rpZp',()=>setZoom((R.zoom||100)+10));
+  on('rp0',()=>{const b=R.blind;repStart(R.d.date.replace(/-/g,''),b);});
+  on('rpPlay',()=>{R.timer?(repPause(),repPanelRender()):repPlay();});
+  on('rp1',()=>{repPause();repAdvance(60);repRender();});
+  on('rp5',()=>{repPause();repAdvance(300);repRender();});
+  on('rpEnd',()=>{if(!R.done){repPause();R.done=true;R.mini=false;repFlatAll('手動結束平倉');repRender();}else{repExit();}});
+  on('rpX',()=>{el.style.display='none';});
+  on('rpMin',()=>{R.mini=true;repPanelRender();});
+  on('rpMax',()=>{R.mini=false;repPanelRender();});
+  const sp=el.querySelector('#rpSpd');if(sp)sp.onchange=e=>{R.speed=+e.target.value;if(R.timer){repPause();repPlay();}};
+  const se=el.querySelector('#rpSel');if(se)se.onchange=e=>{R.sel=e.target.value;repPanelRender();};
+  const qe=el.querySelector('#rpQty');if(qe)qe.onchange=e=>{R.qty=Math.max(1,+e.target.value||1);};
+  const q=()=>Math.max(1,+(el.querySelector('#rpQty')||{}).value||R.qty||1);
+  on('rpBuy',()=>repOrder(R.sel,'B',q()));
+  on('rpSell',()=>repOrder(R.sel,'S',q()));
+  el.querySelectorAll('[data-flat]').forEach(b=>b.onclick=()=>{const k=b.dataset.flat,p=R.pos[k];if(p)repOrder(k,p.qty>0?'S':'B',Math.abs(p.qty));});
+}
+function repDrag(el){                            // 拖曳把手(✥🎬): 手指/滑鼠拖到哪停到哪, 位置記住
+  const h=el.querySelector('#rpHandle');if(!h)return;
+  const D=R.drag||(R.drag={sx:0,sy:0,ox:0,oy:0,on:false});
+  const start=(x,y)=>{const r=el.getBoundingClientRect();D.sx=x;D.sy=y;D.ox=r.left;D.oy=r.top;D.on=true;
+    el.style.right='auto';el.style.width=r.width+'px';};
+  const move=(x,y)=>{if(!D.on)return;const z=(R.zoom||100)/100;
+    el.style.left=Math.max(0,Math.min(window.innerWidth-60,D.ox+(x-D.sx)))/z+'px';
+    el.style.top=Math.max(0,Math.min(window.innerHeight-40,D.oy+(y-D.sy)))/z+'px';};
+  const end=()=>{if(!D.on)return;D.on=false;try{localStorage.setItem('txf_rep_pos',JSON.stringify({l:el.style.left,t:el.style.top,w:el.style.width}));}catch(_){}};
+  h.addEventListener('touchstart',e=>{const t=e.touches[0];start(t.clientX,t.clientY);},{passive:true});
+  h.addEventListener('touchmove',e=>{e.preventDefault();const t=e.touches[0];move(t.clientX,t.clientY);},{passive:false});
+  h.addEventListener('touchend',end);
+  h.addEventListener('mousedown',e=>{start(e.clientX,e.clientY);e.preventDefault();});
+  if(!R.dragDoc){R.dragDoc=true;                 // document層監聽只掛一次(面板每tick重繪)
+    document.addEventListener('mousemove',e=>{if(R.drag&&R.drag.on){const el2=document.getElementById('repPanel');const z=(R.zoom||100)/100;
+      el2.style.left=Math.max(0,Math.min(window.innerWidth-60,R.drag.ox+(e.clientX-R.drag.sx)))/z+'px';
+      el2.style.top=Math.max(0,Math.min(window.innerHeight-40,R.drag.oy+(e.clientY-R.drag.sy)))/z+'px';}});
+    document.addEventListener('mouseup',()=>{if(R.drag)R.drag.on=false;});}
+}
+document.getElementById('repBtn').onclick=async()=>{
+  const el=document.getElementById('repPanel');
+  if(el.style.display==='block'){el.style.display='none';return;}
+  el.style.top=(document.querySelector('.hdr').offsetHeight+6)+'px';
+  try{const ps=JSON.parse(localStorage.getItem('txf_rep_pos')||'null');if(ps&&ps.l){el.style.left=ps.l;el.style.top=ps.t;el.style.width=ps.w;el.style.right='auto';}
+      R.zoom=+(localStorage.getItem('txf_rep_zoom')||100);el.style.zoom=R.zoom/100;}catch(_){}
+  if(!R.index.length)await repLoadIndex();
+  el.style.display='block';repPanelRender();
+};
+
+loadHist();loadLive();loadFills();setInterval(impTick,30000);setInterval(chainTick,15000);
+setInterval(loadLive,30000);
+setInterval(loadHist,1800000);
+setInterval(loadFills,1800000);
+</script></body></html>
